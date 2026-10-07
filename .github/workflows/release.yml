@@ -145,6 +145,7 @@ jobs:
           EOF
 
           gh release create "$TAG" \
+            --target "${{ github.sha }}" \
             --title "$TAG" \
             --notes-file release_body.md \
             "$ELF" "$PY" "$EXE"
