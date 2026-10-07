@@ -50,6 +50,10 @@ piou-autoloader-host.spec
 build/
 dist/
 
+# Optional downloaded payload packs and release tooling archive
+payload-pack/
+piou-autoloader-payload-tools_v*.zip
+
 # OS specific
 .DS_Store
 Thumbs.db

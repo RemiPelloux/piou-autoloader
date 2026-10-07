@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "profiles": {
+    "manager": ["payload-manager"],
+    "arsenal": ["elf-arsenal"],
+    "modular": ["shadowmount", "cheatrunner"],
+    "orbit": ["shadowmount", "orbit-store"],
+    "custom": []
+  },
+  "payloads": {
+    "payload-manager": {
+      "name": "Payload Manager", "version": "0.5.2", "filename": "pldmgr.elf",
+      "source": "https://github.com/itsPLK/ps5-payload-manager",
+      "url": "https://github.com/itsPLK/ps5-payload-manager/releases/download/v0.5.2/pldmgr_v0.5.2.elf",
+      "sha256": "62b3ba2a4937c2afc502f9a4e7242cca538610ebb4ae2800c7c6f72e7f268e7c",
+      "size": 2410776, "delay_ms": 1000, "requires": [], "conflicts": [],
+      "note": "Manage payloads interactively. Its own autoload feature is separate from this pack."
+    },
+    "elf-arsenal": {
+      "name": "ELF Arsenal", "version": "1.6.23", "filename": "elf-arsenal.elf",
+      "source": "https://git.etawen.dev/soniciso/elf-arsenal",
+      "url": "https://git.etawen.dev/soniciso/elf-arsenal/releases/download/v1.6.23/elf-arsenal.elf",
+      "sha256": "20cdb0979ce627aff8e684a4506e18390a72492d5e3aa15ecef0bfe1bca08bb5",
+      "size": 4937952, "delay_ms": 10000, "requires": [],
+      "conflicts": ["kstuff-lite", "shadowmount", "cheatrunner"],
+      "note": "Bundles kstuff-lite, ShadowMountPlus and CheatRunner. Configure its services at http://<PS5-IP>:6969. Check upstream firmware support and first-run defaults. Digest measured from the upstream release download."
+    },
+    "kstuff-lite": {
+      "name": "kstuff-lite", "version": "1.11", "filename": "kstuff.elf",
+      "source": "https://github.com/EchoStretch/kstuff-lite",
+      "url": "https://github.com/EchoStretch/kstuff-lite/releases/download/v1.11/kstuff.elf",
+      "sha256": "ab9a6cb4d3b1daf139d4d646e402b1cf569071acd64599c936d7a3a6164dc779",
+      "size": 1737080, "delay_ms": 5000, "requires": [], "conflicts": ["elf-arsenal"],
+      "note": "Upstream labels this release beta and advertises FW 1.00–13.60. Do not also run another HEN/kstuff stack."
+    },
+    "shadowmount": {
+      "name": "ShadowMountPlus", "version": "1.7beta3", "filename": "shadowmountplus.elf",
+      "source": "https://github.com/drakmor/ShadowMountPlus",
+      "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta3/shadowmountplus.elf",
+      "sha256": "2a7427e20ba7a70bd8cd01e47eb00ee7ca82db82dff3da7884f48f9c3fcbe95a",
+      "size": 2437848, "delay_ms": 5000, "requires": ["kstuff-lite"], "conflicts": ["elf-arsenal"],
+      "note": "ShadowMountPlus variant; upstream requires kstuff-lite 1.07+. Beta: review upstream storage and shutdown caveats."
+    },
+    "cheatrunner": {
+      "name": "CheatRunner", "version": "0.17.2", "filename": "CheatRunner.elf",
+      "source": "https://github.com/notmaj0r/CheatRunner",
+      "url": "https://github.com/notmaj0r/CheatRunner/releases/download/v0.17.2/CheatRunner.elf",
+      "sha256": "36ad03e236e6603aaaf05d95ed3399c7b54475a9bceba085cbe02899bc88ae0f",
+      "size": 10091832, "delay_ms": 2000, "requires": [], "conflicts": ["elf-arsenal"],
+      "note": "Local dashboard at http://<PS5-IP>:9999. Leave other cheat engines off; follow upstream upgrade instructions."
+    },
+    "orbit-store": {
+      "name": "Orbit Store", "version": "0.8.0", "filename": "orbit_store.elf",
+      "source": "https://github.com/saawant12/orbit-store-ps5",
+      "url": "https://github.com/saawant12/orbit-store-ps5/releases/download/v0.8.0/orbit_store.elf",
+      "sha256": "f8188366e1b6a36cf7ce1c3429df15a1d0fa69c2a93cb9cca36ea5a46cedbb4d",
+      "size": 46274256, "delay_ms": 2000, "requires": [], "conflicts": [],
+      "note": "Optional browser service at http://<PS5-IP>:34177. Sources remain user-configured. Library actions require ShadowMount's compatible API; the native TV app is installed separately upstream."
+    }
+  }
+}

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('frontend/autoloader/app.js', 'utf8');
 
-function boot() {
+function boot(mode = 'umtx2') {
   let now = 1000;
   const handlers = {};
   const intervals = new Map();
@@ -32,7 +32,7 @@ function boot() {
   frame.contentDocument = { getElementById() { return null; }, readyState: 'loading' };
   const storage = { length: 0, getItem() { return null; }, setItem() {}, removeItem() {} };
   const window = {
-    location: { search: '?force=umtx2', reload() {} },
+    location: { search: '?force=' + mode, reload() {} },
     addEventListener(type, fn) { handlers[type] = fn; }
   };
   const context = {
@@ -70,6 +70,45 @@ test('result messages must come from the armed iframe', () => {
   assert.equal(app.elements.statePill.textContent, 'Ready');
   assert.equal(app.intervals.size, 0);
   assert.equal(app.frame.src, 'about:blank');
+});
+
+test('same-URL document replacement resets mirroring', () => {
+  const app = boot();
+  app.frame.contentDocument.getElementById = () => ({ children: [
+    { textContent: 'old output', className: '' }
+  ] });
+  app.advance(500);
+  app.frame.contentDocument = { getElementById: () => ({ children: [
+    { textContent: 'new output', className: '' }
+  ] }) };
+  app.advance(500);
+  assert.match(app.elements.log.lastChild.textContent, /new output$/);
+});
+
+test('Poops pending partial lines are not skipped on the next append', () => {
+  const app = boot('poops');
+  const scr = { textContent: '[+] first\n[+] par' };
+  app.frame.contentDocument.getElementById = id => id === 'scr' ? scr : null;
+  app.advance(500);
+  assert.match(app.elements.log.lastChild.textContent, /first$/);
+  scr.textContent += 'tial\n';
+  app.advance(500);
+  assert.match(app.elements.log.lastChild.textContent, /partial$/);
+  const count = app.elements.log.children.length;
+  app.advance(500);
+  assert.equal(app.elements.log.children.length, count);
+});
+
+test('Relapse log messages batch through the periodic mirror', () => {
+  const app = boot('relapse');
+  let reads = 0;
+  app.frame.contentDocument.getElementById = () => { reads++; return { children: [] }; };
+  for (let i = 0; i < 1000; i++) {
+    app.handlers.message({ data: { type: 'piou', kind: 'log' }, source: app.frame.contentWindow });
+  }
+  assert.equal(reads, 0);
+  app.advance(500);
+  assert.equal(reads, 1);
 });
 
 test('large log bursts render only the bounded tail', () => {

@@ -40,6 +40,15 @@ There is no database, ORM, or database N+1 query in this application. The matchi
 - Python and JavaScript syntax checks and `git diff --check` were run during the review.
 - GitHub Actions now runs the desktop regression suite on pushes and pull requests.
 
+## v0.5.4 follow-up
+
+- Relapse log notifications are coalesced by the existing 500 ms mirror interval instead of rescanning on every message. A regression sends 1,000 notifications and verifies one periodic read.
+- Poops avoids splitting unchanged log text and retains a pending partial line until the next append. Mirror state resets on document identity changes even when the URL is unchanged.
+- Optional payload tooling resolves and deduplicates dependencies, rejects duplicate Arsenal services, streams downloads to a verified disk cache, and refuses existing output directories. Autoload requires explicit opt-in; incomplete downloads cannot publish a config.
+- Six upstream downloads were retrieved and matched pinned SHA-256 and size: Arsenal, kstuff-lite, ShadowMountPlus, CheatRunner, Orbit Store and Payload Manager. An active modular pack and an inactive Arsenal pack were built locally. No payloads were executed on a console.
+- The expanded suite passes 21 Python tests and six Node tests. Payload tests cover dependency cycles, conflicts, cached downloads, corrupt/oversized responses, existing-directory preservation, firmware-range validation and opt-in behavior.
+- Upstream release metadata and documentation underpin the catalog. Arsenal's hash was measured from its official release; GitHub assets use upstream API digests. These integrity checks do not establish runtime compatibility or publisher signatures.
+
 ## Limits and follow-up risks
 
 No PS5 was connected for this audit. Actual exploit success, firmware-specific behavior, cached/offline startup, homescreen installation, and reboot recovery remain unverified on hardware. Windows executable packaging and runtime were not exercised.

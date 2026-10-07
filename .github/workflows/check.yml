@@ -20,3 +20,4 @@ jobs:
           node-version: '22'
       - run: make check
       - run: git diff --check
+      - run: python3 tools/payload_pack.py --profile modular --firmware 9.00 --plan

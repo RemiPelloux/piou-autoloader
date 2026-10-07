@@ -24,7 +24,7 @@ Firmware 6.xx and versions outside these ranges are unsupported. Where both Poop
 
 ## Install
 
-Use release artifacts from your repository's **Releases** page when available. A source checkout is not a ready-to-run installer.
+Use release artifacts from the **[Releases](https://github.com/RemiPelloux/piou-autoloader/releases)** page when available. A source checkout is not a ready-to-run installer.
 
 ### Already jailbroken
 
@@ -46,6 +46,22 @@ While running, the host resolves the guide domain to your PC and returns NXDOMAI
 Repeat installation with the new release. This refreshes the cached pages and homescreen app. Payload files and `autoload.txt` in your USB or internal payload directory are preserved.
 
 ## Payloads
+
+### Optional ready-to-copy packs
+
+Choose **ELF Arsenal**, **Orbit Store**, **ShadowMountPlus**, **CheatRunner**, **kstuff-lite**, or **Payload Manager** with the verified payload-pack builder. It resolves dependencies, prevents duplicate bundled services, and keeps automatic startup off unless requested.
+
+```bash
+# Preview a modular stack without downloading.
+python3 tools/payload_pack.py --profile modular --firmware 9.00 --plan
+
+# Prepare Arsenal + Orbit with automatic startup explicitly enabled.
+python3 tools/payload_pack.py --profile arsenal --add orbit-store --firmware 9.00 --autoload
+```
+
+Copy the generated `payload-pack/ps5_autoloader/` folder to your USB root or `/data/ps5_autoloader`. Existing output folders are preserved. ELF Arsenal already bundles kstuff-lite, ShadowMountPlus, and CheatRunner; the builder blocks duplicate combinations.
+
+Download the small **payload-tools ZIP** from [Releases](https://github.com/RemiPelloux/piou-autoloader/releases), or run from this checkout. See **[Payload setup](docs/PAYLOADS.md)** for profiles, exact versions, opt-out instructions, and compatibility limits. Payload binaries are fetched from upstream only when selected.
 
 ### Payload Manager
 
@@ -101,7 +117,7 @@ The bundled loader used by Poops and Relapse accepts localhost connections. To s
 The native installer is C, the console UI is framework-free JavaScript, and the PC host uses Python's standard library. UI changes must remain compatible with the PS5's older WebKit; keep controller code ES5-compatible.
 
 ```bash
-git clone --recurse-submodules <your-private-repository-url>
+git clone --recurse-submodules https://github.com/RemiPelloux/piou-autoloader.git
 cd piou-autoloader
 make check
 make icons

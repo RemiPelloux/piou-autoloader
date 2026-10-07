@@ -64,6 +64,7 @@
   var chainStarted = false;
   var stalled = false;
   var lastFrameUrl = '';
+  var lastFrameDoc = null;
   var mirrorTimer = 0;
   var tickTimer = 0;
   var startedAt = Date.now();
@@ -573,8 +574,9 @@
     try {
       frameUrl = exploitEl.contentWindow.location.href;
     } catch (e) { }
-    if (frameUrl !== lastFrameUrl) {
+    if (frameUrl !== lastFrameUrl || frameDoc !== lastFrameDoc) {
       lastFrameUrl = frameUrl;
+      lastFrameDoc = frameDoc;
       consoleMirror = { lines: 0, lastEntry: null, lastText: '' };
     }
     /* The iframe is intentionally empty until the chain is armed. */
@@ -647,6 +649,7 @@
 
   /* ── slopkit (poops) mirror ───────────────────────────────────────────── */
   var slopkitMirroredLines = 0;
+  var slopkitLastLog = '';
   var slopkitLastStageText = '';
   var slopkitLastStageCls = '';
   var slopkitLastSummaryText = '';
@@ -666,9 +669,11 @@
     try {
       frameUrl = exploitEl.contentWindow.location.href;
     } catch (e) { }
-    if (frameUrl !== lastFrameUrl) {
+    if (frameUrl !== lastFrameUrl || frameDoc !== lastFrameDoc) {
       lastFrameUrl = frameUrl;
+      lastFrameDoc = frameDoc;
       slopkitMirroredLines = 0;
+      slopkitLastLog = '';
       slopkitLastStageText = '';
       slopkitLastStageCls = '';
       slopkitLastSummaryText = '';
@@ -703,12 +708,17 @@
       return;
     }
 
-    var lines = scr.textContent.split('\n');
-    if (lines.length < slopkitMirroredLines) {
-      slopkitMirroredLines = lines.length;
+    /* Quiet polls must not split the entire accumulated log again. Keep the
+       trailing partial line pending so its next append is not skipped. */
+    var logText = scr.textContent || '';
+    var lines = logText === slopkitLastLog ? [] : logText.split('\n');
+    if (lines.length && logText !== slopkitLastLog) {
+      if (logText.indexOf(slopkitLastLog) !== 0) slopkitMirroredLines = 0;
+      slopkitLastLog = logText;
+      slopkitMirroredLines = Math.max(slopkitMirroredLines, lines.length - MAX_LOG_LINES);
     }
     var mirroredAny = false;
-    for (; slopkitMirroredLines < lines.length; slopkitMirroredLines++) {
+    for (; slopkitMirroredLines < lines.length - 1; slopkitMirroredLines++) {
       var line = lines[slopkitMirroredLines].trim();
       if (!line) continue;
       if (/^>/.test(line) || /^\[\+\]/.test(line)
@@ -872,7 +882,8 @@
       try { src = exploitEl ? exploitEl.contentWindow : null; } catch (e) { src = null; }
       if (!src || event.source !== src || !chainStarted) return;
       if (data.kind === 'log' && exploitMode === 'relapse') {
-        mirrorConsole(exploitMode);
+        /* The 500 ms mirror batches log bursts; mirroring every message
+           repeatedly scans the same growing console during startup. */
         return;
       }
       if (data.kind === 'autoload') {
