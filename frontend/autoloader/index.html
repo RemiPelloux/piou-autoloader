@@ -9,7 +9,7 @@
   <title>PiouAutoLoader v[[VERSION_PLACEHOLDER]]</title>
 </head>
 
-<body>
+<body class="is-booting">
   <!-- Animated backdrop: grid, glow and a slow scan sweep. -->
   <div id="bg" aria-hidden="true">
     <div id="grid"></div>
@@ -22,10 +22,16 @@
 
   <main id="app">
     <header id="brand">
-      <div id="orb" class="orb">
+      <div id="orb" class="orb" aria-hidden="true">
         <span class="ring"></span>
         <span class="ring r2"></span>
+        <span class="ring r3"></span>
         <span class="core"></span>
+        <img class="brand-mark" src="logo.svg" width="54" height="54" alt="" />
+        <span class="spark s1"></span>
+        <span class="spark s2"></span>
+        <span class="spark s3"></span>
+        <span class="burst"></span>
       </div>
       <div id="titles">
         <h1>PiouAutoLoader</h1>
@@ -39,11 +45,11 @@
 
     <section id="track" aria-label="Progress stages">
       <ol id="steps">
-        <li><i></i><span>Boot</span></li>
-        <li><i></i><span>WebKit</span></li>
-        <li><i></i><span>Kernel</span></li>
-        <li><i></i><span>elfldr</span></li>
-        <li><i></i><span>Payload</span></li>
+        <li><i></i><span class="lbl">Boot</span><span class="t"></span></li>
+        <li><i></i><span class="lbl">WebKit</span><span class="t"></span></li>
+        <li><i></i><span class="lbl">Kernel</span><span class="t"></span></li>
+        <li><i></i><span class="lbl">elfldr</span><span class="t"></span></li>
+        <li><i></i><span class="lbl">Payload</span><span class="t"></span></li>
       </ol>
     </section>
 
@@ -52,16 +58,18 @@
         <div id="barFill"></div>
         <div id="barShine"></div>
       </div>
-      <div id="barLabel">Waiting to start…</div>
+      <div id="barLabel">Waiting to start&hellip;</div>
     </section>
 
     <section id="console">
       <div id="consoleHead">
         <span class="led"></span>
         <span id="consoleTitle">Live log</span>
+        <button id="restartBtn" type="button" class="ghost">Restart</button>
         <span id="timer">00:00</span>
       </div>
       <div id="log" aria-live="polite"></div>
+      <button id="jump" type="button" class="chip" hidden>New output &darr;</button>
       <div id="retryWrap" hidden>
         <button id="retryBtn" type="button">Retry</button>
       </div>
@@ -71,8 +79,33 @@
       <span>PiouAutoLoader v[[VERSION_PLACEHOLDER]]</span>
       <span class="sep">&middot;</span>
       <span>built [[BUILD_TIME_PLACEHOLDER]]</span>
+      <button id="detailsBtn" type="button" class="ghost small">Details</button>
     </footer>
   </main>
+
+  <!-- Diagnostics overlay: everything needed to explain a failed run. -->
+  <aside id="details" hidden>
+    <div id="detailsHead">
+      <span>Diagnostics</span>
+      <button id="detailsClose" type="button" class="ghost small">Close</button>
+    </div>
+    <dl>
+      <dt>Firmware</dt>
+      <dd id="dFw">&ndash;</dd>
+      <dt>Chain</dt>
+      <dd id="dChain">&ndash;</dd>
+      <dt>State</dt>
+      <dd id="dState">&ndash;</dd>
+      <dt>Elapsed</dt>
+      <dd id="dTime">&ndash;</dd>
+      <dt>Last output</dt>
+      <dd id="dEvent">&ndash;</dd>
+      <dt>Stages</dt>
+      <dd id="dStages">&ndash;</dd>
+      <dt>User agent</dt>
+      <dd id="dUa">&ndash;</dd>
+    </dl>
+  </aside>
 
   <script src="app.js"></script>
 </body>

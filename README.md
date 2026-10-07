@@ -1,148 +1,146 @@
 <p align="center">
- <img src="./assets/icon.svg" width="128" alt="PiouAutoLoader" />
+  <img src="assets/icon.svg" width="160" height="160" alt="PiouAutoLoader — a bird taking flight" />
 </p>
 <h1 align="center">PiouAutoLoader</h1>
-&nbsp;
-<p align="center">Automatically loads a WebKit exploit and your ELF payloads on the PS5.<br>Supports firmwares <b>1.00&ndash;5.50</b> and <b>7.00&ndash;13.60</b>.</p>
+<p align="center">Your PS5 homebrew launch routine, one homescreen shortcut.</p>
+<p align="center">
+  <a href="#install">Install</a> · <a href="#payloads">Payloads</a> ·
+  <a href="#troubleshooting">Troubleshooting</a> · <a href="#development">Development</a>
+</p>
 
----
+PiouAutoLoader installs a homescreen shortcut, caches the launch pages on your console, and loads your configured ELF payloads. It brings firmware selection, progress, logs, and retry controls into one lightweight interface.
 
-## What is this?
+The PC host is needed only for initial setup when you are not already jailbroken. After installation, the shortcut uses the console's cache. Network requirements depend on the selected chain.
 
-PiouAutoLoader turns "run a WebKit exploit" into a single homescreen shortcut. After a one-time install, the exploit page is cached on the console itself, so nothing depends on a third-party website or DNS server staying online.
+## Compatibility
 
-- **Fully offline on FW 1.00&ndash;12.00** with the **Poops** chain: everything is served from the console once installed, so there is no third-party server to go down or change behind your back. Firmwares **7.00&ndash;13.60** can instead run **Relapse**, which needs an active network interface (Wi-Fi or Ethernet).
-- **One-time setup, then a homescreen shortcut.** Launch **PiouAutoLoader** from the homescreen and it does the rest &mdash; no PC required afterwards.
-- **Payloads load the usual way.** After the exploit chain runs, payloads are sent through the standard unified-autoloader flow: **Payload Manager** by default, or a fixed `autoload.txt` chain.
-- **Designed to be readable and resilient.** A staged progress tracker, a live mirror of the exploit's own log, a stall watchdog, and a tolerant native log pipeline. See [Quality of life](#quality-of-life).
+| Firmware | Chain | Network requirement after installation |
+|---|---|---|
+| 1.00–5.50 | umtx2 | Offline |
+| 7.00–12.00 | Poops | Offline |
+| 7.00–13.60, except 9.05 and 11.40 | Relapse | Active Wi-Fi or Ethernet interface |
 
-## Setup
+Firmware 6.xx and versions outside these ranges are unsupported. Where both Poops and Relapse are available, the installer offers a choice. Relapse is the default if no saved choice exists. These ranges describe the routing implemented here; success still depends on upstream chain support and the console's state.
 
-There are two ways to get started, depending on whether you are already jailbroken.
+## Install
 
-### Already jailbroken &mdash; load the installer ELF
+Use release artifacts from your repository's **Releases** page when available. A source checkout is not a ready-to-run installer.
 
-1. Download `piou-autoloader-installer_vX.Y.Z.elf` from the Releases page.
-2. Send it with `elfldr`, or launch it from Payload Manager.
-3. The installer opens the browser once to cache the autoloader, then creates the **PiouAutoLoader** homescreen app and exits.
-4. **Reboot once**, then launch **PiouAutoLoader** from the homescreen.
+### Already jailbroken
 
-### Not jailbroken yet &mdash; host the exploit from a PC
+1. Send `piou-autoloader-installer_vX.Y.Z.elf` with elfldr, or launch it through Payload Manager.
+2. Let the browser finish caching. The installer creates or updates the **PiouAutoLoader** homescreen app after caching succeeds.
+3. Reboot once, then launch **PiouAutoLoader** from the homescreen.
 
-1. Download `piou-autoloader-host.py` (or the `.exe`) and run it on a PC on the same network.
-2. On the PS5, set your network's DNS server to the PC's IP address.
-3. Open the **User's Guide** from Settings to run the installer, which adds the **PiouAutoLoader** app to the homescreen.
-4. Launch **PiouAutoLoader** from the homescreen.
+### First installation from a PC
 
-> Set your DNS back to automatic once the install is done.
+1. Run the bundled `piou-autoloader-host_vX.Y.Z.py` or Windows `.exe` on a PC on the same network.
+2. Set the PS5's DNS server to the PC address shown by the host. Allow DNS/UDP 53 and HTTPS/TCP 443 through the PC firewall. Binding these ports may require administrator privileges.
+3. Open **Settings → User's Guide** on the PS5 and let installation finish.
+4. Restore the console's DNS setting to automatic, reboot, and launch **PiouAutoLoader**.
 
-## How to use
+While running, the host resolves the guide domain to your PC and returns NXDOMAIN for other domains. Restore DNS before using the console's normal internet services. The host's “Installer served” message only confirms delivery of the page; it does not confirm successful installation.
 
-There are two ways to configure payloads.
+### Update
 
-### Option 1 &mdash; Payload Manager (default)
+Repeat installation with the new release. This refreshes the cached pages and homescreen app. Payload files and `autoload.txt` in your USB or internal payload directory are preserved.
 
-If no `autoload.txt` config is found, the autoloader launches **Payload Manager**, a web-UI payload manager, so you can configure and send payloads from your browser without preparing files ahead of time. Just run the autoloader &mdash; if nothing is configured, Payload Manager starts automatically.
+## Payloads
 
-> Payload Manager also has its own built-in autoload feature, managed through its web UI. That is separate from the `autoload.txt` mechanism below.
+### Payload Manager
 
-### Option 2 &mdash; Manual config (`autoload.txt`)
+Without an `autoload.txt`, the unified autoloader starts **Payload Manager**, where you can configure and send payloads through its web interface. Its own autoload feature is separate from the file-based configuration below.
 
-For a fixed, automated payload chain:
+### A fixed sequence
 
-- Create a directory named `ps5_autoloader`.
-- Inside it, place your `.elf` / `.bin` files and an `autoload.txt`.
-  - List the files to load, one filename per line (case-sensitive).
-  - Add lines like `!1000` to wait 1000 ms before sending the next payload.
-- Put the `ps5_autoloader` directory in one of these locations (highest priority first):
-  - Root of a USB drive
-  - Internal drive: `/data/ps5_autoloader`
-
-> When an `autoload.txt` config is found, Payload Manager is **not** launched automatically. To keep it available, add `pldmgr.elf` to your `ps5_autoloader` directory and list it in `autoload.txt`.
-
-## Quality of life
-
-This build focuses on making the run easier to follow and harder to wedge:
-
-- **Staged progress tracker** &mdash; five checkpoints (Boot &rarr; WebKit &rarr; Kernel &rarr; elfldr &rarr; Payload) light up as the chain advances, driven by the exploit's own output.
-- **Live log mirror** &mdash; the chain's internal log is streamed into the page, classified by severity instead of hidden inside a hidden iframe.
-- **Stall watchdog + Retry** &mdash; if nothing progresses for two minutes the UI says so and offers a one-click clean retry (which also clears the slopkit latch, so a retry never no-ops).
-- **Animated, lightweight UI** &mdash; transform/opacity-only animations, no frameworks, ES5 JavaScript for the console's older WebKit.
-- **Native log ring buffer** &mdash; the on-console log no longer dead-ends when it fills up, so long installs keep streaming and waiters never block forever.
-- **Thread-safe exploit selection** &mdash; the session's chosen exploit is guarded by a mutex across the HTTP server's connection threads.
-
-## Additional info
-
-<details>
-<summary><i>How do I update the autoloader?</i></summary>
-
-The autoloader content is cached on the console, so updating is the same as the initial install: follow the [Setup](#setup) steps with the new release files. The latest installer re-creates the homescreen app and refreshes the cached page. Your payloads and `autoload.txt` on USB / internal storage are never touched.
-
-</details>
-
-<details>
-<summary><i>How do I use a custom ELF loader?</i></summary>
-
-On firmwares 7.00&ndash;13.60 (Relapse / Poops), the autoloader boots a custom **elfldr** that only accepts connections from localhost, so other devices on your network cannot push payloads to the console. On firmwares 1.00&ndash;5.50 (umtx2) the stock elfldr is used.
-
-To use a normal ELF loader, load it through **Payload Manager**. With a manual `autoload.txt`:
-
-1. Place your custom loader (e.g. `elfldr.elf`) in `ps5_autoloader`.
-2. Add `elfldr.elf` to `autoload.txt`.
-3. If other payloads follow it, add a sleep immediately after (e.g. `!4000`) so the new loader is listening before they are sent.
+Create `ps5_autoloader/` at the root of a USB drive, or use `/data/ps5_autoloader` on the internal drive. USB takes priority. Place payloads and `autoload.txt` together:
 
 ```text
-# Load custom ELF loader
+ps5_autoloader/
+├── autoload.txt
+├── elfldr.elf
+└── etaHEN.elf
+```
+
+Example `autoload.txt`:
+
+```text
+# Filenames are case-sensitive.
 elfldr.elf
-# Give it 4 seconds to start up (only needed if more payloads follow)
+# Wait four seconds for the custom loader to start.
 !4000
-# Send other payloads
 etaHEN.elf
 ```
 
-</details>
+Each filename loads a payload; `!1000` waits one second. When a config exists, Payload Manager does not start automatically. Add `pldmgr.elf` and list it explicitly if you want it in the sequence.
 
-## For developers
+The bundled loader used by Poops and Relapse accepts localhost connections. To send payloads from another device, load your preferred network-accessible ELF loader through Payload Manager or `autoload.txt`. umtx2 uses its stock loader.
 
-Technical internals live in **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+## Progress and recovery
 
-Common Make targets (the native ELF is cross-built with the PS5 payload SDK, usually inside Docker):
+- **Five checkpoints:** Boot → WebKit → Kernel → elfldr → Payload, with stage timings.
+- **Live logs:** a bounded 200-line view, severity styling, and a **New output** button when reading earlier output.
+- **Stall detection:** a warning after 30 seconds without initial output, followed by a stalled state after two minutes without observed activity. This is a UI heuristic, not proof that the chain has stopped.
+- **Retry and Restart:** start a fresh page session and clear stale Poops session flags. Press `R` or use the buttons.
+- **Details:** firmware, chain, state, elapsed time, and user agent for troubleshooting. Terminal states freeze the elapsed time.
+- **Bounded installer:** the temporary native HTTP server binds to localhost, limits connections, and exits after ten minutes if installation never completes.
+
+## Troubleshooting
+
+| Symptom | What to check |
+|---|---|
+| User's Guide cannot connect | Same network, PC firewall, correct DNS address, and host ports available. |
+| Host reports “address already in use” | Another DNS or web service may own port 53 or 443. Custom ports are useful for desktop testing; the console normally expects the defaults. |
+| Unsupported firmware | Check the compatibility table. Forcing a chain does not add firmware support. |
+| No output / Stalled | Read the last log lines and Details. Retry once; follow the upstream chain's reboot guidance if it remains stuck. |
+| Cached app fails after updating | Run the installer again and wait for caching and installation to finish. |
+| Payload Manager does not open | Check for an existing `autoload.txt`; it replaces the default behavior. |
+
+## Development
+
+The native installer is C, the console UI is framework-free JavaScript, and the PC host uses Python's standard library. UI changes must remain compatible with the PS5's older WebKit; keep controller code ES5-compatible.
 
 ```bash
-make dev        # rebuild + serve the frontend locally for UI work
-make icons      # regenerate icon0.png / icon.ico / favicons / logos from assets/icon.svg
-make all        # build installer.elf
-make host       # build piou-autoloader-host.py with the frontend embedded
+git clone --recurse-submodules <your-private-repository-url>
+cd piou-autoloader
+make check
+make icons
 ```
 
-`./build_release.sh` builds the versioned release artifacts in one step.
+Desktop checks require Python 3.10+, Node.js 18+, a C compiler (`cc`), and GNU Make 4.3+. Icon generation uses `rsvg-convert` on Linux or QuickLook on macOS. macOS's default Make is too old for the grouped icon rule; use a current GNU Make.
 
-## Third-party components
+Build the PS5 SDK image and installer:
 
-PiouAutoLoader is a front-end and installer around exploit chains and loaders maintained by others. These are pinned as submodules / downloaded at build time and are **not** modified beyond small integration patches:
+```bash
+docker build -f Dockerfile.sdk -t piou-autoloader-sdk .
+docker run --rm -v "$PWD:/src" piou-autoloader-sdk make all host
+```
 
-- **[idlesauce/umtx2](https://github.com/idlesauce/umtx2)** &mdash; umtx2 exploit chain (FW 1.00&ndash;5.50).
-- **[slopkit](https://github.com/jordyidk/slopkit)** &mdash; Poops chain (FW 7.00&ndash;12.00).
-- **[ntfargo/Relapse-Exploit](https://github.com/ntfargo/Relapse-Exploit)** &mdash; Relapse chain (FW 7.00&ndash;13.60).
-- **[ps5-payload-dev/sdk](https://github.com/ps5-payload-dev/sdk)** and **[elfldr](https://github.com/ps5-payload-dev/elfldr)** &mdash; the payload SDK and ELF loader.
-- **`ps5-elfldr`, `ps5-kexp`, `ps5-unified-autoloader`** (pinned submodules) &mdash; the localhost-only loader and the unified payload autoloader embedded into the installer.
-- **[madler/zlib `puff`](https://github.com/madler/zlib/tree/master/contrib/puff)** &mdash; vendored DEFLATE decompressor.
+Other entry points:
 
-## Credits
+| Command | Purpose |
+|---|---|
+| `make check` | Host, generated-registry, native log, and UI regression tests |
+| `make icons` | Generate PS5/Windows icons, favicons, and page logos from `assets/icon.svg` |
+| `make dev` | Prepare dependencies and serve a local frontend preview |
+| `make all` | Cross-compile `installer.elf` (SDK required) |
+| `make host` | Embed the installer and frontend into the standalone Python host |
+| `./build_release.sh` | Build versioned release artifacts |
 
-* **[idlesauce](https://github.com/idlesauce)** &amp; contributors &mdash; [umtx2](https://github.com/idlesauce/umtx2)
-* **[jordyidk](https://github.com/jordyidk)** &amp; contributors &mdash; [slopkit (Poops)](https://github.com/jordyidk/slopkit)
-* **[soniciso1](https://github.com/soniciso1)** &mdash; [Relapse](https://github.com/soniciso1/relapse), bringing Poops support down to lower firmwares (7.00&ndash;8.60)
-* **[ntfargo](https://github.com/ntfargo)** &amp; contributors &mdash; [Relapse](https://github.com/ntfargo/Relapse-Exploit)
-* **[ufm42](https://github.com/ufm42)** &mdash; [kexp](https://github.com/ufm42/kexp)
-* **[john-tornblom](https://github.com/john-tornblom)** &mdash; [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk/) and [elfldr](https://github.com/ps5-payload-dev/elfldr)
-* **[madler](https://github.com/madler)** &mdash; [puff](https://github.com/madler/zlib/tree/master/contrib/puff)
-* Everyone else contributing to the PS5 homebrew scene.
+`make dev` fetches and prepares third-party dependencies. For an isolated static preview, serve the frontend without running a chain. Desktop checks do not validate actual PS5 execution; firmware, AppCache, installation, and reboot behavior need console testing.
 
-## Disclaimer
+See [ARCHITECTURE.md](ARCHITECTURE.md) for internals and [AUDIT.md](AUDIT.md) for the audit findings, checks, and remaining limitations.
 
-This tool is provided as-is for research and development purposes only. Use at your own risk. The developers are not responsible for any damage, data loss, or consequences resulting from the use of this software.
+## Credits and license
 
-## License
+PiouAutoLoader integrates work from the PS5 homebrew community:
 
-GPL-3.0. See [LICENSE](LICENSE).
+- [idlesauce/umtx2](https://github.com/idlesauce/umtx2) — umtx2.
+- [jordyidk/slopkit](https://github.com/jordyidk/slopkit) and [soniciso1/relapse](https://github.com/soniciso1/relapse) — Poops and lower-firmware support.
+- [ntfargo/Relapse-Exploit](https://github.com/ntfargo/Relapse-Exploit) — Relapse.
+- [ufm42/kexp](https://github.com/ufm42/kexp) — kernel payload work.
+- [john-tornblom](https://github.com/john-tornblom) and [ps5-payload-dev](https://github.com/ps5-payload-dev) — SDK and ELF loader.
+- [itsPLK](https://github.com/itsPLK) and contributors — pinned loader, unified autoloader, and Payload Manager dependencies.
+- [madler/zlib](https://github.com/madler/zlib/tree/master/contrib/puff) — the vendored DEFLATE decompressor.
+
+Licensed under [GPL-3.0](LICENSE). Third-party components retain their respective licenses. Provided as-is for research and development; use on hardware you own or are authorized to test.

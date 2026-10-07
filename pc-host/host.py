@@ -5,9 +5,9 @@ A zero-dependency DNS + HTTP server that:
   - Spoofs ``manuals.playstation.net`` (or any --target) to this PC's IP.
   - Returns NXDOMAIN for every other domain (blocks telemetry/internet).
   - Serves files over HTTPS on port 443 (required) and optionally over HTTP
-    (--http-port, e.g. for browser testing), checking the overrides/
-    directory first, the embedded frontend archive second, and the base
-    frontend directory last. The built ``piou-autoloader-host.py`` (from
+    (--http-port, e.g. for browser testing). Bundled builds serve only the
+    embedded archive; source runs check overrides/ before the base frontend
+    directory. The built ``piou-autoloader-host.py`` (from
     tools/build_host.py) carries the frontend/autoloader files inside the
     script itself, so it is fully portable and serves them straight from
     memory.
@@ -23,6 +23,7 @@ import argparse
 import base64
 import binascii
 import datetime
+from contextlib import ExitStack
 import errno
 import io
 import json
@@ -120,7 +121,7 @@ def build_credits():
             "",
             "   ┌" + "─" * width + "┐",
             row("THIS PROJECT IS FREE & OPEN SOURCE"),
-            row("github.com/YOUR_GITHUB/piou-autoloader"),
+            row("PiouAutoLoader / PS5 homebrew"),
             "   └" + "─" * width + "┘",
         ]
     )
@@ -227,6 +228,7 @@ EMBEDDED_ZIP_B64 = ""
 
 _embedded_zip_cache = None
 _embedded_zip_loaded = False
+_embedded_zip_lock = threading.Lock()
 
 
 def get_embedded_zip():
@@ -236,15 +238,16 @@ def get_embedded_zip():
     payload is corrupt), in which case only the filesystem sources are used.
     """
     global _embedded_zip_cache, _embedded_zip_loaded
-    if not _embedded_zip_loaded:
-        _embedded_zip_loaded = True
-        if EMBEDDED_ZIP_B64:
-            try:
-                _embedded_zip_cache = zipfile.ZipFile(
-                    io.BytesIO(base64.b64decode(EMBEDDED_ZIP_B64))
-                )
-            except (binascii.Error, zipfile.BadZipFile):
-                _embedded_zip_cache = None
+    with _embedded_zip_lock:
+        if not _embedded_zip_loaded:
+            if EMBEDDED_ZIP_B64:
+                try:
+                    _embedded_zip_cache = zipfile.ZipFile(
+                        io.BytesIO(base64.b64decode(EMBEDDED_ZIP_B64))
+                    )
+                except (binascii.Error, zipfile.BadZipFile):
+                    _embedded_zip_cache = None
+            _embedded_zip_loaded = True
     return _embedded_zip_cache
 
 
@@ -271,17 +274,17 @@ def get_server_cert():
     """
     if SSL_CERT_PEM and SSL_KEY_PEM:
         return SSL_CERT_PEM, SSL_KEY_PEM
-    tmpdir = tempfile.mkdtemp(prefix="ps5-piou-")
-    cert_path = os.path.join(tmpdir, "cert.pem")
-    key_path = os.path.join(tmpdir, "key.pem")
-    try:
-        generate_server_cert(cert_path, key_path)
-    except (OSError, subprocess.CalledProcessError):
-        return None, None
-    with open(cert_path) as f:
-        cert = f.read()
-    with open(key_path) as f:
-        key = f.read()
+    with tempfile.TemporaryDirectory(prefix="ps5-piou-") as tmpdir:
+        cert_path = os.path.join(tmpdir, "cert.pem")
+        key_path = os.path.join(tmpdir, "key.pem")
+        try:
+            generate_server_cert(cert_path, key_path)
+            with open(cert_path) as f:
+                cert = f.read()
+            with open(key_path) as f:
+                key = f.read()
+        except (OSError, subprocess.CalledProcessError):
+            return None, None
     return cert, key
 
 
@@ -298,7 +301,10 @@ def detect_local_ip():
 
 
 def validate_ip(value):
-    socket.inet_aton(value)
+    try:
+        socket.inet_pton(socket.AF_INET, value)
+    except OSError as exc:
+        raise argparse.ArgumentTypeError("Expected an IPv4 address") from exc
     return value
 
 
@@ -328,7 +334,7 @@ def parse_query(data):
     if len(data) < 12:
         return None
     qid, _flags, qdcount, _, _, _ = struct.unpack(">HHHHHH", data[:12])
-    if qdcount < 1:
+    if qdcount != 1 or _flags & 0xF800:
         return None
 
     offset = 12
@@ -338,7 +344,7 @@ def parse_query(data):
         if length == 0:
             offset += 1
             break
-        if length & 0xC0 == 0xC0:  # compressed pointer: name continues elsewhere
+        if length > 63:  # reject pointers and reserved label encodings
             return None
         offset += 1
         if offset + length > len(data):
@@ -348,7 +354,7 @@ def parse_query(data):
     else:
         return None
 
-    if offset + 4 > len(data):  # QTYPE + QCLASS
+    if offset - 12 > 255 or offset + 4 > len(data):  # QTYPE + QCLASS
         return None
     end = offset + 4
     name = ".".join(labels).lower()
@@ -363,8 +369,11 @@ def build_response(qid, question_bytes, ip=None):
         answer = b""
     else:
         flags = 0x8180  # QR + RD + RA
-        answer = b"\xc0\x0c" + struct.pack(">HHIH", 1, 1, DEFAULT_TTL, 4) + socket.inet_aton(ip)
-    header = struct.pack(">HHHHHH", qid, flags, 1, 1 if ip else 0, 0, 0)
+        qtype, qclass = struct.unpack(">HH", question_bytes[-4:])
+        answer = b""
+        if qclass == 1 and qtype in (1, 255):
+            answer = b"\xc0\x0c" + struct.pack(">HHIH", 1, 1, DEFAULT_TTL, 4) + socket.inet_aton(ip)
+    header = struct.pack(">HHHHHH", qid, flags, 1, 1 if answer else 0, 0, 0)
     return header + question_bytes + answer
 
 
@@ -422,7 +431,7 @@ class DNSHandler(socketserver.BaseRequestHandler):
             sock.sendto(build_response(qid, question_bytes), self.client_address)
 
 
-class DNSServer(socketserver.ThreadingUDPServer):
+class DNSServer(socketserver.UDPServer):
     allow_reuse_address = True
 
     def __init__(self, address, target, ip, logger=print, guide=None):
@@ -434,8 +443,7 @@ class DNSServer(socketserver.ThreadingUDPServer):
 
 
 class DualDirHandler(SimpleHTTPRequestHandler):
-    """Serves files from overrides/ first, the embedded zip archive second,
-    and base_dir last."""
+    """Serve the embedded archive exclusively, or overrides then base_dir."""
 
     def __init__(self, *args, base_dir, overrides_dir, allowed_host, embedded_zip=None, **kwargs):
         self.base_dir = os.path.abspath(base_dir) if base_dir else None
@@ -494,27 +502,35 @@ class DualDirHandler(SimpleHTTPRequestHandler):
         # If running as a fat binary, serve STRICTLY from the embedded zip
         if self.embedded_zip is not None:
             for candidate in candidates:
-                if candidate in self.embedded_zip.namelist():
+                try:
                     info = self.embedded_zip.getinfo(candidate)
-                    mtime = datetime.datetime(*info.date_time[:6]).timestamp()
-                    return self.embedded_zip.read(info), self._content_type(candidate), mtime, "embedded", candidate
+                except KeyError:
+                    continue
+                mtime = datetime.datetime(*info.date_time[:6]).timestamp()
+                return self.embedded_zip.read(info), self._content_type(candidate), mtime, "embedded", candidate
             return None
 
-        # 1. Overrides directory (local development)
-        for candidate in candidates:
-            override_path = os.path.join(self.overrides_dir, candidate)
-            if os.path.isfile(override_path):
-                with open(override_path, "rb") as f:
-                    return f.read(), self._content_type(candidate), os.path.getmtime(override_path), "overrides", candidate
-
-        # 2. Base directory (local development)
-        for candidate in candidates:
-            base_path = os.path.join(self.base_dir, candidate)
-            if os.path.isfile(base_path):
-                with open(base_path, "rb") as f:
-                    return f.read(), self._content_type(candidate), os.path.getmtime(base_path), "base", candidate
+        for source, root in (("overrides", self.overrides_dir), ("base", self.base_dir)):
+            if not root:
+                continue
+            for candidate in candidates:
+                resolved = self._read_local(root, candidate, source)
+                if resolved is not None:
+                    return resolved
 
         return None
+
+    def _read_local(self, root, candidate, source):
+        root = os.path.realpath(root)
+        path = os.path.realpath(os.path.join(root, candidate))
+        try:
+            if os.path.commonpath((root, path)) != root:
+                return None
+            with open(path, "rb") as file:
+                return (file.read(), self._content_type(candidate),
+                        os.fstat(file.fileno()).st_mtime, source, candidate)
+        except (OSError, ValueError):
+            return None
 
     @staticmethod
     def _content_type(path):
@@ -552,12 +568,19 @@ class DualDirHandler(SimpleHTTPRequestHandler):
         return io.BytesIO(data)
 
 
+class HostHTTPServer(ThreadingHTTPServer):
+    def get_request(self):
+        connection, address = super().get_request()
+        connection.settimeout(10)
+        return connection, address
+
+
 def build_http_server(host, port, base, overrides, allowed_host, embedded_zip=None, logger=print, quiet=False, guide=None):
     handler = lambda *args, **kwargs: DualDirHandler(
         *args, base_dir=base, overrides_dir=overrides, allowed_host=allowed_host,
         embedded_zip=embedded_zip, **kwargs
     )
-    httpd = ThreadingHTTPServer((host, port), handler)
+    httpd = HostHTTPServer((host, port), handler)
     httpd.daemon_threads = True
     httpd.log = logger
     httpd.quiet = quiet
@@ -613,7 +636,16 @@ def parse_args(argv=None):
 
 
 def main(argv=None):
-    args = parse_args(argv)
+    with ExitStack() as resources:
+        return run_servers(parse_args(argv), resources)
+
+
+def start_server(server, resources):
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    resources.callback(server.shutdown)
+
+
+def run_servers(args, resources):
     if args.no_color:
         global COLOR_ENABLED
         COLOR_ENABLED = False
@@ -657,13 +689,14 @@ def main(argv=None):
     if not args.no_dns:
         try:
             dns = DNSServer(("0.0.0.0", args.dns_port), args.target, ip, logger=dns_logger, guide=guide)
+            resources.callback(dns.server_close)
         except OSError as exc:
             print(tag(f"[-] Could not bind DNS port {args.dns_port} (required): {exc}"))
             hint = _bind_hint("DNS", args.dns_port, exc)
             if hint:
                 print(_style(hint, 2))
             return 1
-        threading.Thread(target=dns.serve_forever, daemon=True).start()
+        start_server(dns, resources)
         print(tag(f"[+] DNS server on UDP {args.dns_port}"))
 
     httpd = None
@@ -683,7 +716,8 @@ def main(argv=None):
                 print(_style(hint, 2))
             print(_style("    Continuing without HTTP.", 2))
         if httpd is not None:
-            threading.Thread(target=httpd.serve_forever, daemon=True).start()
+            resources.callback(httpd.server_close)
+            start_server(httpd, resources)
             print(tag(f"[+] HTTP server on TCP {args.http_port}"))
 
     httpsd = None
@@ -696,39 +730,31 @@ def main(argv=None):
                 quiet=not args.verbose,
                 guide=guide,
             )
+            resources.callback(httpsd.server_close)
             cert_pem, key_pem = get_server_cert()
             if cert_pem is None:
                 print(tag("[-] Could not obtain an HTTPS certificate for the server."))
                 print(_style("    Run the build (make host) or install the 'openssl' command.", 2))
                 return 1
-            cert_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")
-            cert_file.write(cert_pem.encode("ascii"))
-            cert_file.close()
-
-            key_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")
-            key_file.write(key_pem.encode("ascii"))
-            key_file.close()
-
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            context.load_cert_chain(certfile=cert_file.name, keyfile=key_file.name)
-            httpsd.socket = context.wrap_socket(httpsd.socket, server_side=True)
-
-            # Best-effort cleanup: on Windows, antivirus/indexing scanners may
-            # briefly hold the files open and make os.unlink fail. The cert is
-            # already loaded into the SSL context, so leaking the temp file is
-            # harmless — only the warning matters.
-            for fname in (cert_file.name, key_file.name):
-                try:
-                    os.unlink(fname)
-                except OSError as exc:
-                    print(tag(f"[-] Could not remove temp {fname}: {exc}"))
+            with tempfile.TemporaryDirectory(prefix="piou-tls-") as tls_dir:
+                cert_path = os.path.join(tls_dir, "cert.pem")
+                key_path = os.path.join(tls_dir, "key.pem")
+                with open(cert_path, "w") as file:
+                    file.write(cert_pem)
+                with open(key_path, "w") as file:
+                    file.write(key_pem)
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+            httpsd.socket = context.wrap_socket(
+                httpsd.socket, server_side=True, do_handshake_on_connect=False
+            )
         except OSError as exc:
             print(tag(f"[-] Could not bind HTTPS port {args.https_port} (required): {exc}"))
             hint = _bind_hint("HTTPS", args.https_port, exc)
             if hint:
                 print(_style(hint, 2))
             return 1
-        threading.Thread(target=httpsd.serve_forever, daemon=True).start()
+        start_server(httpsd, resources)
         print(tag(f"[+] HTTPS server on TCP {args.https_port}"))
 
     if dns is None and httpd is None and httpsd is None:
@@ -747,7 +773,8 @@ def main(argv=None):
     # Bounded wait for the update check; if it hasn't finished by now the
     # notice is skipped silently (best-effort only).
     if checker is not None:
-        checker.thread.join(1.0)
+        if checker.thread is not None:
+            checker.thread.join(1.0)
         notice = checker.notice()
         if notice:
             print(notice)
@@ -759,15 +786,7 @@ def main(argv=None):
             threading.Event().wait(3600)
     except KeyboardInterrupt:
         print(tag("\n[-] Shutting down."))
-        if dns:
-            dns.shutdown()
-            dns.server_close()
-        if httpd:
-            httpd.shutdown()
-            httpd.server_close()
-        if httpsd:
-            httpsd.shutdown()
-            httpsd.server_close()
+        # ExitStack shuts down and closes every server, including on failures.
     return 0
 
 

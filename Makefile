@@ -83,7 +83,7 @@ print-version:
 # Regenerate all derived icon assets (homescreen icon, .ico, favicons, logos)
 icons: $(ICON0) $(ICON_ICO) $(FAVICON_INSTALLER) $(FAVICON_AUTOLOADER) $(LOGO_INSTALLER) $(LOGO_AUTOLOADER)
 
-$(ICON0) $(ICON_ICO) $(FAVICON_INSTALLER) $(FAVICON_AUTOLOADER) $(LOGO_INSTALLER) $(LOGO_AUTOLOADER): $(ICON_MASTER) tools/gen_icons.py
+$(ICON0) $(ICON_ICO) $(FAVICON_INSTALLER) $(FAVICON_AUTOLOADER) $(LOGO_INSTALLER) $(LOGO_AUTOLOADER) &: $(ICON_MASTER) tools/gen_icons.py
 	@echo "Generating icon assets from $(ICON_MASTER)..."
 	$(PYTHON) tools/gen_icons.py
 
@@ -160,6 +160,12 @@ clean:
 	rm -rf $(FRONTEND_STAGE)
 	rm -f $(ELF) $(FILE_REGISTRY_H) $(FILE_REGISTRY_C) $(FILE_REGISTRY_STAMP)
 	rm -f $(PIOU_HOST) $(VERSION_HEADER)
+
+# Desktop regression checks; no console or SDK required (Python, Node, C compiler).
+.PHONY: check
+check:
+	$(PYTHON) -m unittest discover -s tests -p 'test_*.py' -v
+	node --test tests/autoloader.test.cjs
 
 .PHONY: all host dev clean relapse-prepare slopkit-prepare umtx2-prepare payload-deps
 

@@ -72,8 +72,7 @@ static int install_file(const char *path, const uint8_t *data, size_t size) {
     fclose(f);
     return -1;
   }
-  fclose(f);
-  return 0;
+  return fclose(f) == 0 ? 0 : -1;
 }
 
 static int install_app(const char *title_id, const char *dir) {

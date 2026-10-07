@@ -1,49 +1,19 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">PiouAutoLoader</title>
+  <desc id="desc">A bright blue bird taking flight through an open launch ring.</desc>
   <defs>
-    <linearGradient id="piouRing" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#7dd3fc"/>
-      <stop offset="55%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#7df966"/>
+    <linearGradient id="wing" x1="240" y1="760" x2="730" y2="230" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2885ff"/>
+      <stop offset="1" stop-color="#8ff5ec"/>
     </linearGradient>
-    <linearGradient id="piouRing2" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#2563eb"/>
-      <stop offset="100%" stop-color="#7dd3fc"/>
-    </linearGradient>
-    <radialGradient id="piouCore" cx="38%" cy="30%" r="80%">
-      <stop offset="0%" stop-color="#12304f"/>
-      <stop offset="55%" stop-color="#0b1b30"/>
-      <stop offset="100%" stop-color="#070d18"/>
-    </radialGradient>
-    <radialGradient id="piouHalo" cx="50%" cy="50%" r="50%">
-      <stop offset="55%" stop-color="#38bdf8" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.45"/>
-    </radialGradient>
-    <linearGradient id="piouPlay" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#bfe9ff"/>
+    <linearGradient id="orbit" x1="140" y1="870" x2="850" y2="130" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2885ff" stop-opacity=".25"/>
+      <stop offset="1" stop-color="#8ff5ec"/>
     </linearGradient>
   </defs>
-
-  <circle cx="512" cy="512" r="500" fill="url(#piouHalo)" opacity="0.55"/>
-
-  <g transform="rotate(-90 512 512)">
-    <circle cx="512" cy="512" r="470" fill="none" stroke="url(#piouRing)" stroke-width="46"
-            stroke-linecap="round" stroke-dasharray="820 164"/>
-  </g>
-
-  <g transform="rotate(40 512 512)">
-    <circle cx="512" cy="512" r="372" fill="none" stroke="url(#piouRing2)" stroke-width="14"
-            stroke-linecap="round" stroke-dasharray="900 268" opacity="0.85"/>
-  </g>
-
-  <circle cx="512" cy="512" r="286" fill="url(#piouCore)" stroke="#1e3a5f" stroke-width="3"/>
-
-  <path d="M 512 232 A 280 280 0 0 0 236 470" fill="none" stroke="#ffffff" stroke-opacity="0.12"
-        stroke-width="16" stroke-linecap="round"/>
-
-  <path d="M 448 372 L 448 652 L 686 512 Z" fill="url(#piouPlay)"/>
-
-  <circle cx="512" cy="42" r="60" fill="#7df966" opacity="0.18"/>
-  <circle cx="512" cy="42" r="34" fill="#7df966"/>
+  <path d="M820 716a380 380 0 1 1-127-535" fill="none" stroke="url(#orbit)" stroke-width="44" stroke-linecap="round"/>
+  <path d="M204 578 378 550 581 263 582 453 689 333Q744 274 804 325L863 374 789 405Q775 515 650 594L456 710 501 593 340 673Z" fill="url(#wing)"/>
+  <path d="m378 550 204-97-81 140-161 80Z" fill="#1362c9" opacity=".65"/>
+  <circle cx="764" cy="359" r="14" fill="#081324"/>
+  <path d="m646 731 32 32 68-76" fill="none" stroke="#b0fff0" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

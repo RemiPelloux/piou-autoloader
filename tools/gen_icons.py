@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate all derived icon assets from assets/icon.svg at build time.
 
-The master SVG is a full-bleed sphere with no padding and no background, so
+The master SVG is a bird and launch ring on a transparent canvas, so
 every generated asset gets a dark background and ~10% padding added.
 
 Outputs:
@@ -33,7 +33,7 @@ LOGO_INSTALLER = os.path.join(ROOT, "frontend", "installer-page", "logo.svg")
 LOGO_AUTOLOADER = os.path.join(ROOT, "frontend", "autoloader", "logo.svg")
 
 VIEWBOX = 1024
-ART_RADIUS = 510.04  # outermost extent of the master art (ring reaches y=1022.08)
+ART_RADIUS = 512  # master canvas radius; keep all variants consistently padded
 PAD_FRACTION = 0.1
 SCALE = (1.0 - 2.0 * PAD_FRACTION) * (VIEWBOX / 2.0) / ART_RADIUS
 TRANSLATE = VIEWBOX * (1.0 - SCALE) / 2.0

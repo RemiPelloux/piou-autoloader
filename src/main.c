@@ -10,6 +10,8 @@
  */
 
 #include <microhttpd.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -52,14 +54,20 @@ static pid_t find_pid(const char *name) {
      * (matches the layout used by the ps5-payload-dev SDK's klib). These
      * are ABI-specific; re-check if the kernel struct ever changes. */
     for (uint8_t *ptr = buf; ptr < (buf + buf_size);) {
-        int ki_structsize = *(int *)ptr;
-        pid_t ki_pid = *(pid_t *)&ptr[72];
-        char *ki_tdname = (char *)&ptr[447];
-
-        ptr += ki_structsize;
-        if (!strcmp(name, ki_tdname) && ki_pid != mypid) {
+        size_t remaining = (size_t)(buf + buf_size - ptr);
+        int ki_structsize;
+        if (remaining < sizeof(ki_structsize)) break;
+        memcpy(&ki_structsize, ptr, sizeof(ki_structsize));
+        if (ki_structsize <= 447 || (size_t)ki_structsize > remaining) break;
+        pid_t ki_pid;
+        memcpy(&ki_pid, ptr + 72, sizeof(ki_pid));
+        const char *ki_tdname = (const char *)ptr + 447;
+        size_t name_space = (size_t)ki_structsize - 447;
+        if (memchr(ki_tdname, '\0', name_space) &&
+            !strcmp(name, ki_tdname) && ki_pid != mypid) {
             pid = ki_pid;
         }
+        ptr += ki_structsize;
     }
 
     free(buf);
@@ -80,13 +88,21 @@ int main(void) {
 
     syscall(SYS_thr_set_name, -1, PIOU_THREAD_NAME);
 
-    /* Kill previous installer instances */
-    while ((pid = find_pid(PIOU_THREAD_NAME)) > 0) {
+    /* Kill previous installer instances. Bounded: if a stale process refuses
+     * to die we log it and carry on rather than looping forever (the new
+     * bind would fail anyway, but the failure is now explicit and visible). */
+    int kill_attempts = 0;
+    while ((pid = find_pid(PIOU_THREAD_NAME)) > 0 && kill_attempts < PIOU_KILL_RETRIES) {
         if (kill(pid, SIGKILL)) {
             piou_log("[PIOU] kill failed\n");
             return EXIT_FAILURE;
         }
+        kill_attempts++;
         sleep(1);
+    }
+    if (kill_attempts >= PIOU_KILL_RETRIES) {
+        piou_log("[PIOU] Previous instance (pid %d) survived %d kill attempts; continuing anyway.\n",
+                 (int)pid, PIOU_KILL_RETRIES);
     }
 
     piou_log("[PIOU] PiouAutoLoader Installer v%s (built %s) starting on port %d...\n",
@@ -114,10 +130,19 @@ int main(void) {
     signal(SIGHUP, SIG_IGN);
     signal(SIGTERM, SIG_IGN);
 
+    /* Bind the installer and its state-changing routes to this console only. */
+    struct sockaddr_in bind_addr = {0};
+    bind_addr.sin_family = AF_INET;
+    bind_addr.sin_port = htons(PIOU_PORT);
+    bind_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
     /* Start the MHD daemon using a thread pool to handle concurrent AppCache requests. */
     daemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD | MHD_USE_DEBUG,
                               PIOU_PORT, NULL, NULL, &http_on_request,
                               NULL, 
+                              MHD_OPTION_SOCK_ADDR, &bind_addr,
+                              MHD_OPTION_CONNECTION_TIMEOUT, (unsigned int)15,
+                              MHD_OPTION_CONNECTION_LIMIT, (unsigned int)32,
                               MHD_OPTION_THREAD_POOL_SIZE, (unsigned int)8,
                               MHD_OPTION_END);
 
@@ -145,10 +170,18 @@ int main(void) {
     ps5_launch_browser(browser_url);
 
     /* Main loop — runs until /install succeeds (which also installs the
-     * homescreen app) and sets http_keep_running to 0 */
+     * homescreen app) and sets http_keep_running to 0, until the client asks
+     * to exit, or until the lifetime cap expires (see PIOU_MAX_LIFETIME_SEC). */
     int webkit_clear_attempts = 0;
+    long ticks = 0;
+    const long max_ticks = (long)PIOU_MAX_LIFETIME_SEC * 10; /* 100 ms per tick */
 
     while (atomic_load(&http_keep_running)) {
+        if (++ticks > max_ticks) {
+            piou_log("[PIOU] Lifetime cap reached (%ds) with no /install and no /exit; "
+                     "stopping so the port is not held forever.\n", PIOU_MAX_LIFETIME_SEC);
+            break;
+        }
         /* Check if the frontend requested a WebKit data clear */
         if (atomic_load(&webkit_data_cleared)) {
             atomic_store(&webkit_data_cleared, 0);

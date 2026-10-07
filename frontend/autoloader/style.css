@@ -5,6 +5,12 @@
  * Everything animates with transform/opacity only so the console's browser
  * stays smooth while the exploit runs. All vendor properties are prefixed
  * for older WebKit.
+ *
+ * Layout rules that matter for stability on the PS5 browser:
+ *   - #app is NOT vertically centred: centred flex + overflow clips the top
+ *     and bottom unreachably in old WebKit. The console grows instead.
+ *   - #log is the scroller and carries min-height:0 so it can actually
+ *     shrink inside the flex column.
  */
 
 * {
@@ -124,7 +130,7 @@ body {
   width: 100%;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 2.2rem 2rem 1.4rem;
+  padding: 2rem 2rem 1.2rem;
   display: -webkit-box;
   display: -webkit-flex;
   display: flex;
@@ -132,10 +138,11 @@ body {
   -webkit-box-direction: normal;
   -webkit-flex-direction: column;
   flex-direction: column;
-  -webkit-box-pack: center;
-  -webkit-justify-content: center;
-  justify-content: center;
-  gap: 1.1rem;
+  -webkit-box-pack: start;
+  -webkit-justify-content: flex-start;
+  justify-content: flex-start;
+  gap: 1rem;
+  overflow: hidden;
 }
 
 /* ── brand header ──────────────────────────────────────────────────────── */
@@ -147,6 +154,8 @@ body {
   -webkit-align-items: center;
   align-items: center;
   gap: 1.1rem;
+  -webkit-flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 .orb {
@@ -155,6 +164,17 @@ body {
   height: 74px;
   -webkit-flex: 0 0 auto;
   flex: 0 0 auto;
+}
+
+.orb .brand-mark {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  width: 54px;
+  height: 54px;
+  background: #080d16;
+  border-radius: 50%;
 }
 
 .orb .ring {
@@ -183,6 +203,23 @@ body {
   animation: spin 2.4s linear infinite reverse;
 }
 
+/* dashed outer halo — only visible while a chain is running */
+.orb .ring.r3 {
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border-width: 1px;
+  border-style: dashed;
+  border-color: rgba(56, 189, 248, 0.22);
+  border-top-color: rgba(56, 189, 248, 0.6);
+  opacity: 0;
+  -webkit-animation: spin 9s linear infinite;
+  animation: spin 9s linear infinite;
+  -webkit-transition: opacity 0.6s;
+  transition: opacity 0.6s;
+}
+
 .orb .core {
   position: absolute;
   top: 50%;
@@ -198,6 +235,51 @@ body {
   animation: pulse 2.2s ease-in-out infinite;
 }
 
+/* orbiting sparks (transform/opacity only) */
+.orb .spark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: #7dd3fc;
+  box-shadow: 0 0 8px rgba(125, 211, 252, 0.9);
+  opacity: 0;
+  -webkit-animation: orbit 3.6s linear infinite;
+  animation: orbit 3.6s linear infinite;
+}
+
+.orb .spark.s2 {
+  background: #7df966;
+  box-shadow: 0 0 8px rgba(125, 249, 102, 0.9);
+  -webkit-animation-duration: 5.2s;
+  animation-duration: 5.2s;
+  -webkit-animation-delay: -1.4s;
+  animation-delay: -1.4s;
+}
+
+.orb .spark.s3 {
+  -webkit-animation-duration: 7.4s;
+  animation-duration: 7.4s;
+  -webkit-animation-delay: -3.1s;
+  animation-delay: -3.1s;
+}
+
+/* completion shockwave — fired once by .is-done */
+.orb .burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  border: 2px solid rgba(125, 249, 102, 0.9);
+  opacity: 0;
+}
+
 @-webkit-keyframes spin { to { -webkit-transform: rotate(360deg); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @-webkit-keyframes pulse {
@@ -207,6 +289,38 @@ body {
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.18); }
+}
+@-webkit-keyframes orbit {
+  0% { opacity: 0; -webkit-transform: rotate(0deg) translateX(34px) rotate(0deg) scale(0.6); }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { opacity: 0; -webkit-transform: rotate(360deg) translateX(34px) rotate(-360deg) scale(0.6); }
+}
+@keyframes orbit {
+  0% { opacity: 0; transform: rotate(0deg) translateX(34px) rotate(0deg) scale(0.6); }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(360deg) translateX(34px) rotate(-360deg) scale(0.6); }
+}
+@-webkit-keyframes shock {
+  0% { opacity: 0.9; -webkit-transform: scale(0.4); }
+  100% { opacity: 0; -webkit-transform: scale(4.2); }
+}
+@keyframes shock {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(4.2); }
+}
+@-webkit-keyframes nudge {
+  0%, 100% { -webkit-transform: translateX(0); }
+  20% { -webkit-transform: translateX(-5px); }
+  45% { -webkit-transform: translateX(4px); }
+  70% { -webkit-transform: translateX(-2px); }
+}
+@keyframes nudge {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  45% { transform: translateX(4px); }
+  70% { transform: translateX(-2px); }
 }
 
 #titles {
@@ -271,6 +385,8 @@ body {
 /* ── stage tracker ─────────────────────────────────────────────────────── */
 #track {
   width: 100%;
+  -webkit-flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 #steps {
@@ -310,6 +426,17 @@ body {
   transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s, transform 0.3s;
 }
 
+/* per-stage tick timestamp */
+#steps li .t {
+  display: block;
+  margin-top: 0.18rem;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #3d4c63;
+  font-variant-numeric: tabular-nums;
+}
+
 /* connector line between dots */
 #steps li::before {
   content: "";
@@ -342,6 +469,10 @@ body {
   background: #22c55e;
 }
 
+#steps li.done .t {
+  color: #4f7f66;
+}
+
 #steps li.active i {
   background: #38bdf8;
   border-color: #7dd3fc;
@@ -355,6 +486,8 @@ body {
 /* ── progress bar ──────────────────────────────────────────────────────── */
 #barWrap {
   width: 100%;
+  -webkit-flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 #bar {
@@ -419,7 +552,7 @@ body {
   position: relative;
   -webkit-box-flex: 1;
   flex: 1 1 auto;
-  min-height: 8rem;
+  min-height: 7rem;
   display: -webkit-box;
   display: -webkit-flex;
   display: flex;
@@ -442,7 +575,7 @@ body {
   -webkit-align-items: center;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.6rem 1rem;
+  padding: 0.55rem 1rem;
   background: rgba(15, 23, 42, 0.7);
   border-bottom: 1px solid #1b2b45;
   font-size: 0.82rem;
@@ -450,6 +583,8 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #7f8ea3;
+  -webkit-flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 #consoleHead .led {
@@ -476,6 +611,7 @@ body {
 #log {
   -webkit-box-flex: 1;
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 0.85rem 1rem;
   font-family: "SFMono-Regular", Menlo, Monaco, "Cascadia Mono", "Courier New", monospace;
@@ -510,7 +646,21 @@ body {
   to { opacity: 1; transform: none; }
 }
 
+/* "new output" chip shown when the user has scrolled away from the tail */
+#jump {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 5;
+}
+
+#jump[hidden] {
+  display: none !important;
+}
+
 #retryWrap {
+  -webkit-flex: 0 0 auto;
+  flex: 0 0 auto;
   padding: 0.7rem 1rem 0.9rem;
   text-align: center;
   border-top: 1px solid #1b2b45;
@@ -521,6 +671,7 @@ body {
   display: none !important;
 }
 
+/* ── buttons ───────────────────────────────────────────────────────────── */
 #retryBtn {
   font: inherit;
   font-size: 1rem;
@@ -540,24 +691,152 @@ body {
   transform: translateY(1px);
 }
 
+.ghost {
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #93a4b8;
+  background: rgba(147, 164, 184, 0.08);
+  border: 1px solid rgba(147, 164, 184, 0.25);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  -webkit-transition: color 0.2s, border-color 0.2s, background-color 0.2s;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
+}
+
+.ghost:active,
+.ghost:hover {
+  color: #cfe9ff;
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.ghost[hidden] {
+  display: none !important;
+}
+
+.ghost.small {
+  font-size: 0.7rem;
+  padding: 0.22rem 0.55rem;
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #04121f;
+  background: #7dd3fc;
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.4);
+}
+
+/* ── diagnostics overlay ───────────────────────────────────────────────── */
+#details {
+  position: fixed;
+  z-index: 50;
+  right: 14px;
+  bottom: 44px;
+  width: 340px;
+  max-width: 92vw;
+  max-height: 68vh;
+  overflow: auto;
+  padding: 0.9rem 1rem 1rem;
+  background: rgba(6, 10, 18, 0.97);
+  border: 1px solid #22304a;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  font-size: 0.82rem;
+}
+
+#details[hidden] {
+  display: none !important;
+}
+
+#detailsHead {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-box-pack: justify;
+  -webkit-justify-content: space-between;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7f8ea3;
+}
+
+#details dl {
+  display: block;
+}
+
+#details dt {
+  margin-top: 0.5rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6d82;
+}
+
+#details dd {
+  color: #cfe9ff;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  font-family: "SFMono-Regular", Menlo, Monaco, "Courier New", monospace;
+  font-size: 0.78rem;
+}
+
 /* ── footer ────────────────────────────────────────────────────────────── */
 #foot {
   display: -webkit-box;
   display: -webkit-flex;
   display: flex;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
   -webkit-box-pack: center;
   -webkit-justify-content: center;
   justify-content: center;
   gap: 0.5rem;
   font-size: 0.76rem;
   color: #44546b;
+  -webkit-flex: 0 0 auto;
+  flex: 0 0 auto;
 }
 
 #foot .sep {
   opacity: 0.6;
 }
 
-/* ── terminal states ───────────────────────────────────────────────────── */
+#detailsBtn {
+  margin-left: 0.4rem;
+}
+
+/* ── state-driven visuals ──────────────────────────────────────────────── */
+body.is-running .orb .ring.r3 {
+  opacity: 1;
+}
+
+body.is-running .orb .spark {
+  opacity: 1;
+}
+
+body.is-booting .orb .ring,
+body.is-booting .orb .ring.r2 {
+  -webkit-animation-duration: 4s;
+  animation-duration: 4s;
+}
+
 body.is-done #statePill {
   color: #86efac;
   background: rgba(34, 197, 94, 0.12);
@@ -584,6 +863,15 @@ body.is-done .orb .ring.r2 {
   animation-duration: 3.5s;
 }
 
+body.is-done .orb .spark {
+  opacity: 0;
+}
+
+body.is-done .orb .burst {
+  -webkit-animation: shock 1.4s ease-out 2;
+  animation: shock 1.4s ease-out 2;
+}
+
 body.is-done #consoleHead .led {
   background: #7df966;
   box-shadow: 0 0 8px rgba(125, 249, 102, 0.9);
@@ -595,6 +883,16 @@ body.is-done #barShine {
   -webkit-animation: none;
   animation: none;
   opacity: 0;
+}
+
+body.is-stalled #statePill {
+  color: #fdba74;
+  background: rgba(251, 146, 60, 0.12);
+  border-color: rgba(251, 146, 60, 0.4);
+}
+
+body.is-stalled .orb .ring.r3 {
+  opacity: 0.5;
 }
 
 body.is-error #statePill {
@@ -628,11 +926,16 @@ body.is-error #consoleHead .led {
   animation: none;
 }
 
+body.is-error #brand {
+  -webkit-animation: nudge 0.5s ease-out 1;
+  animation: nudge 0.5s ease-out 1;
+}
+
 /* ── small screens / handheld-ish layout ───────────────────────────────── */
 @media (max-width: 720px) {
   #app {
-    padding: 1.2rem 1rem 0.8rem;
-    gap: 0.8rem;
+    padding: 1.1rem 0.9rem 0.7rem;
+    gap: 0.7rem;
   }
 
   .orb {
@@ -644,11 +947,39 @@ body.is-error #consoleHead .led {
     font-size: 1.4rem;
   }
 
-  #steps li span {
+  #steps li .lbl {
     display: none;
   }
 
   #log {
     font-size: 0.82rem;
+  }
+
+  #details {
+    width: auto;
+    left: 10px;
+    right: 10px;
+    bottom: 40px;
+  }
+}
+
+/* Older WebKit on a TV is easily saturated: honour reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  #glow,
+  #grid,
+  #scan,
+  .orb .ring,
+  .orb .ring.r2,
+  .orb .ring.r3,
+  .orb .core,
+  .orb .spark,
+  #barShine,
+  #consoleHead .led,
+  #steps li.active i,
+  #log .line,
+  body.is-error #brand,
+  body.is-done .orb .burst {
+    -webkit-animation: none !important;
+    animation: none !important;
   }
 }

@@ -19,6 +19,18 @@
 /* Process identity — used to kill stale installer instances on startup */
 #define PIOU_THREAD_NAME "piou.elf"
 
+/* Safety limits for the temporary installer process.
+ *
+ * PIOU_KILL_RETRIES bounds the startup SIGKILL loop: a previous instance that
+ * refuses to die must never wedge this one forever.
+ * PIOU_MAX_LIFETIME_SEC bounds how long the HTTP server may run. The installer
+ * only lives until the browser finishes caching (/install) or asks it to exit
+ * (/exit); if the browser tab is closed first, nothing else would ever stop
+ * it, leaving port PIOU_PORT held by a zombie. The cap is generous
+ * (10 minutes) so a slow first-time cache on a busy console still completes. */
+#define PIOU_KILL_RETRIES 10
+#define PIOU_MAX_LIFETIME_SEC 600
+
 /* Routes */
 #define ROUTE_INDEX "/"
 #define ROUTE_INDEX_HTML "/index.html"

@@ -55,7 +55,13 @@ instead of the unified-autoloader — so this flow installs the homescreen app.
 - The UI is animated with transform/opacity-only CSS and driven by plain ES5 JavaScript
   (no frameworks), so it stays smooth and compatible with the console's older WebKit.
   Five checkpoints (Boot → WebKit → Kernel → elfldr → Payload) advance monotonically as the
-  chain reports progress.
+  chain reports progress, and each checkpoint stamps the time it was reached under its label.
+  `prefers-reduced-motion` disables every animation for users who ask for it.
+- The layout is built for the console's older WebKit: `#app` is deliberately top-aligned
+  (centred flex plus overflow clips unreachably there) and `#log` carries `min-height: 0` so
+  it can actually shrink and scroll inside the flex column.
+- A **Restart** button in the console header (and the `R` key) reload a clean run at any
+  time; a **Details** overlay shows firmware, chain, state, per-stage timings and the UA.
 - A `FORCE_EXPLOIT` build-time override (`auto | umtx2 | poops | relapse`; or a `?force=`
   query) bypasses the table so a specific chain can be exercised on any firmware; the
   exploit's own firmware guard still applies.
@@ -65,10 +71,20 @@ instead of the unified-autoloader — so this flow installs the homescreen app.
   chain's log streams directly into the loader UI.
 - `app.js` mirrors each chain's console log and receives the `?autoload` result
   via `postMessage`. Relapse/umtx2 milestones and Poops stages both advance the staged
-  progress tracker, which never moves backwards mid-run.
-- A **stall watchdog** fires when no new log line arrives for two minutes: it flips the status
-  pill to `Stalled` and reveals a **Retry** button. Retry clears the slopkit latch and reloads
-  the page, so a wedged run always restarts cleanly instead of no-oping.
+  progress tracker, which never moves backwards mid-run. The log only auto-scrolls while the
+  user is already at the tail; a “New output” chip jumps back when they scroll away.
+- **Failure handling is explicit.** `window.onerror` / `unhandledrejection` are trapped, so a
+  thrown error can never leave a dead UI: it is logged, the pill flips to `Failed` and Retry
+  appears. The elapsed clock freezes at a terminal state instead of drifting. A terminal label
+  is never overwritten by late chain noise.
+- A **two-tier watchdog**: a soft hint fires when the chain has produced no output at all after
+  30 s, a periodic heartbeat confirms the parent UI is responsive (not that the chain is progressing), and a hard
+  **stall** fires when no new log line arrives for two minutes. A stall flips the status pill to
+  `Stalled`, replaces the progress label with the stall reason and reveals **Retry**; if output
+  resumes the stall clears itself and the label goes back to the chain's own text.
+- Retry/Restart clear the **whole** `slopkit-poops:*` sessionStorage namespace (probed, not a
+  hard-coded key list) and reload the page, so a wedged run always restarts cleanly instead of
+  no-oping on a stale latch or run log.
 - `payload.elf` is a virtual name: the PC host serves the installer ELF there, the homescreen app
   serves the real unified-autoloader. All exploits autoload the same `payload.elf`. umtx2 (FW
   1.00–5.50) boots its **own bundled elfldr** (`/app/<version>/umtx2/payloads/elfldr-ps5.elf`, kept
@@ -87,13 +103,19 @@ A PS5 payload running a `libmicrohttpd` server on port **18181**:
 3. The browser caches everything through `cache.appcache`, then hits `/install`. The ELF
    installs/updates the `PIOU00001` homescreen app and shuts down only after the cache is
    confirmed complete. If the user closes the browser mid-load, no `/install` is ever hit,
-   so no shortcut is created/updated and the previously-installed version stays untouched (the
-   installer process simply keeps running until a subsequent run kills it). The master URL
+   so no shortcut is created/updated and the previously-installed version stays untouched (a
+   subsequent run kills it, and the process also stops itself after `PIOU_MAX_LIFETIME_SEC`
+   so it can never hold the port forever). The master URL
    carries `?v=<version>` so stale cached entries are avoided.
 4. The app's `deeplinkUri` is the stable pointer `http://127.0.0.1:18181/app/index.html`.
 
 Concurrency and logging are deliberately defensive:
 
+- The startup SIGKILL sweep of stale `piou.elf` instances is bounded by `PIOU_KILL_RETRIES`, so
+  a process that refuses to die is logged and skipped instead of wedging the new run in an
+  infinite loop.
+- The main loop enforces `PIOU_MAX_LIFETIME_SEC` (10 min): if neither `/install` nor `/exit` ever
+  arrives, the server shuts itself down rather than leaking the port.
 - The session's chosen exploit is stored behind a mutex and snapshotted per request, because
   `libmicrohttpd` handles requests on a thread pool — the old unprotected global was a data race.
 - `src/log.c` keeps the most recent 128 KiB in a **ring buffer** addressed by a monotonic byte

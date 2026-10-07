@@ -39,12 +39,11 @@ static pthread_cond_t log_cond = PTHREAD_COND_INITIALIZER;
 static void log_append_locked(const char *data, size_t len) {
     if (len >= LOG_BUFFER_SIZE) {
         /* The chunk alone overflows the whole buffer: keep only its tail. */
+        log_written += len;
         data += len - LOG_BUFFER_SIZE;
-        len = LOG_BUFFER_SIZE;
         log_start = 0;
         log_size = LOG_BUFFER_SIZE;
         memcpy(log_ring, data, LOG_BUFFER_SIZE);
-        log_written += len;
         log_base = log_written - log_size;
         return;
     }
@@ -107,9 +106,13 @@ size_t piou_wait_logs(size_t *pos, char *out_buf, size_t max_len) {
     ts.tv_sec = tv.tv_sec + 1;
     ts.tv_nsec = tv.tv_usec * 1000;
 
+    /* A cursor from an earlier server session must not wait forever for
+       this session to catch up. Restart at the oldest available data. */
+    if (*pos > log_written) *pos = log_base;
+
     while (*pos >= log_written) {
         int rc = pthread_cond_timedwait(&log_cond, &log_mutex, &ts);
-        if (rc == ETIMEDOUT) {
+        if (rc != 0) {
             break;
         }
     }

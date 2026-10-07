@@ -4,12 +4,24 @@
  *   - pick the right WebKit exploit chain for the console's firmware;
  *   - arm it inside a hidden same-origin iframe;
  *   - mirror the chain's own log into a staged, animated progress view;
- *   - report success/failure and offer a retry when a run stalls.
+ *   - report success/failure and keep a clear way out (Restart / Retry)
+ *     when a run stalls or never starts.
  *
  * Compatibility: written for the PS5 WebKit browser — ES5 only (var/function,
  * no arrow functions, no template literals) and defensive try/catch around
  * every cross-document access, because AppCache/iframe timing is the main
  * source of flakiness on that browser.
+ *
+ * Stability rules baked in here (do not "simplify" them away):
+ *   - window.onerror is trapped: a thrown error never leaves a dead UI.
+ *   - the elapsed clock freezes at a terminal state instead of drifting.
+ *   - the log only auto-scrolls while the user is already at the tail, so a
+ *     user reading back-scroll is never yanked away.
+ *   - two watchdogs: a soft "no output yet" hint well before the hard stall,
+ *     plus a periodic heartbeat so a silent-but-alive run is distinguishable
+ *     from a dead one.
+ *   - the whole slopkit "slopkit-poops:*" sessionStorage namespace is cleared
+ *     before arming so no stale latch/run-log can make a retry a no-op.
  */
 (function () {
   'use strict';
@@ -17,7 +29,8 @@
   /* ── element handles ──────────────────────────────────────────────────── */
   var doc = document;
   var logContainer = doc.getElementById('log');
-  var logView = logContainer ? logContainer.parentNode : null;
+  /* #log is the scroller itself (it carries overflow-y:auto), not a wrapper. */
+  var logView = logContainer;
   var barFill = doc.getElementById('barFill');
   var barLabel = doc.getElementById('barLabel');
   var stepsEl = doc.getElementById('steps');
@@ -27,12 +40,27 @@
   var timerEl = doc.getElementById('timer');
   var retryWrap = doc.getElementById('retryWrap');
   var retryBtn = doc.getElementById('retryBtn');
+  var restartBtn = doc.getElementById('restartBtn');
+  var jumpBtn = doc.getElementById('jump');
+  var detailsBtn = doc.getElementById('detailsBtn');
+  var detailsEl = doc.getElementById('details');
+  var detailsClose = doc.getElementById('detailsClose');
+  var dFw = doc.getElementById('dFw');
+  var dChain = doc.getElementById('dChain');
+  var dState = doc.getElementById('dState');
+  var dTime = doc.getElementById('dTime');
+  var dEvent = doc.getElementById('dEvent');
+  var dStages = doc.getElementById('dStages');
+  var dUa = doc.getElementById('dUa');
   var exploitEl = doc.getElementById('exploit');
 
   var MAX_LOG_LINES = 200;
-  var STALL_MS = 120000; /* no new log line for 2 minutes -> flag a stall */
+  var STALL_MS = 120000;      /* no new log line for 2 min -> hard stall */
+  var FIRST_OUTPUT_MS = 30000; /* no chain output at all after 30 s -> hint */
+  var HEARTBEAT_MS = 30000;    /* reassure the user a silent run is alive */
 
   var finished = false;
+  var finishedAt = 0;
   var chainStarted = false;
   var stalled = false;
   var lastFrameUrl = '';
@@ -40,12 +68,36 @@
   var tickTimer = 0;
   var startedAt = Date.now();
   var lastActivity = startedAt;
+  var armedAt = 0;
+  var lastHeartbeatAt = 0;
+  var firstOutputSeen = false;
+  var firstOutputWarned = false;
+  var lastEvent = '';
+  var fwDetected = null;
 
   /* ── staged progress model ────────────────────────────────────────────── */
   /* Five checkpoints, mirrored by the dots in index.html. Progress is
-     monotonic: a chain never makes the bar jump backwards. */
+     monotonic: a chain never makes the bar jump backwards. Each checkpoint
+     also records when it was reached, shown under its label. */
   var STAGE_PCT = [4, 18, 45, 78, 94];
+  var stageTimes = [null, null, null, null, null];
   var currentStage = -1;
+
+  var STATE_LABEL = {
+    boot: 'Booting',
+    run: 'Running',
+    stall: 'Stalled',
+    done: 'Ready',
+    err: 'Failed'
+  };
+  var STATE_CLASS = {
+    boot: 'is-booting',
+    run: 'is-running',
+    stall: 'is-stalled',
+    done: 'is-done',
+    err: 'is-error'
+  };
+  var BODY_STATES = ['is-booting', 'is-running', 'is-stalled', 'is-done', 'is-error'];
 
   function setStepClasses() {
     if (!stepsEl) return;
@@ -56,6 +108,29 @@
       else if (i === currentStage) cls = 'active';
       else cls = '';
       if (items[i].className !== cls) items[i].className = cls;
+    }
+  }
+
+  function spanIn(li, name) {
+    if (!li) return null;
+    var spans = li.getElementsByTagName('span');
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].className === name) return spans[i];
+    }
+    return null;
+  }
+
+  function renderStageTimes() {
+    if (!stepsEl) return;
+    var items = stepsEl.getElementsByTagName('li');
+    for (var i = 0; i < items.length && i < STAGE_PCT.length; i++) {
+      var t = spanIn(items[i], 't');
+      if (!t) continue;
+      var ms = stageTimes[i];
+      if (ms === null) { t.textContent = ''; continue; }
+      var secs = Math.round((ms - startedAt) / 1000);
+      if (secs < 0) secs = 0;
+      t.textContent = '+' + secs + 's';
     }
   }
 
@@ -75,42 +150,70 @@
   /* Move the run forward to checkpoint n (0..4). Never regresses. Returns
      true when the stage actually advanced. */
   function setStage(n) {
+    if (finished) return false;
     if (n <= currentStage) return false;
     if (n > STAGE_PCT.length - 1) n = STAGE_PCT.length - 1;
     currentStage = n;
+    if (stageTimes[n] === null) stageTimes[n] = Date.now();
     setStepClasses();
     setProgress(STAGE_PCT[n]);
+    renderStageTimes();
     touch();
     return true;
   }
 
-  function setState(text) {
-    if (statePill) statePill.textContent = text;
+  function setState(key) {
+    if (statePill) statePill.textContent = STATE_LABEL[key] || key;
+    setBodyState(STATE_CLASS[key] || null);
+    updateDetails();
   }
 
   function touch() {
     lastActivity = Date.now();
+    if (stalled && !finished) {
+      /* The chain woke back up after we flagged it — clear the warning so
+         the UI never lies about the current state. */
+      stalled = false;
+      setState('run');
+      if (retryWrap) retryWrap.hidden = true;
+      setProgressLabel('Recovered — the chain is logging again.');
+      uiLog('[watchdog] Output resumed — chain is alive again.', 'success');
+    }
+  }
+
+  function finishRun() {
+    finished = true;
+    if (!finishedAt) finishedAt = Date.now();
+    if (tickTimer) { clearInterval(tickTimer); tickTimer = 0; }
   }
 
   function markDone() {
-    bodyClass('is-done');
-    setState('Ready');
+    finishRun();
+    setState('done');
     currentStage = STAGE_PCT.length;
     setStepClasses();
-    setProgress(100, 'Autoload finished.');
+    setProgress(100, 'Payload running on the console.');
     if (timerEl) timerEl.textContent = elapsedLabel();
+    if (restartBtn) restartBtn.hidden = true;
+    if (retryWrap) retryWrap.hidden = true;
+    if (jumpBtn) jumpBtn.hidden = true;
+    renderStageTimes();
+    updateDetails();
   }
 
   function markError(message) {
-    bodyClass('is-error');
-    setState('Failed');
+    finishRun();
+    setState('err');
     if (barLabel && message) barLabel.textContent = message;
+    if (timerEl) timerEl.textContent = elapsedLabel();
+    renderStageTimes();
     showRetry();
   }
 
   function bodyClass(name) {
     var body = doc.body;
-    if (!body || !body.className) { if (body) body.className = name; return; }
+    if (!body) return;
+    if (!body.className) { body.className = name; return; }
     if (body.className.indexOf(name) === -1) {
       body.className = body.className + ' ' + name;
     }
@@ -124,20 +227,69 @@
       .replace(/^\s+|\s+$/g, '');
   }
 
+  function setBodyState(name) {
+    for (var i = 0; i < BODY_STATES.length; i++) clearBodyClass(BODY_STATES[i]);
+    if (name) bodyClass(name);
+  }
+
   function showRetry() {
     if (retryWrap) retryWrap.hidden = false;
   }
 
   function elapsedLabel() {
-    var s = Math.floor((Date.now() - startedAt) / 1000);
+    var s = Math.max(0, Math.floor(((finishedAt || Date.now()) - startedAt) / 1000));
     var m = Math.floor(s / 60);
     s = s % 60;
     return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
   }
 
+  /* ── diagnostics panel ────────────────────────────────────────────────── */
+  function setDetail(el, text) {
+    if (el) el.textContent = (text === null || text === undefined || text === '') ? '—' : String(text);
+  }
+
+  function updateDetails() {
+    if (!detailsEl || detailsEl.hidden) return;
+    setDetail(dFw, fwDetected ? fwDetected.str : 'unknown');
+    setDetail(dChain, exploitMode ? (EXPLOIT_LABEL[exploitMode] || exploitMode) : 'not selected');
+    setDetail(dState, statePill ? statePill.textContent : '');
+    setDetail(dTime, elapsedLabel());
+    setDetail(dEvent, lastEvent ? lastEvent.slice(0, 160) : 'none yet');
+    var parts = [];
+    for (var i = 0; i < STAGE_PCT.length; i++) {
+      parts.push(stageTimes[i] === null ? '·' :
+        Math.round((stageTimes[i] - startedAt) / 1000) + 's');
+    }
+    setDetail(dStages, parts.join('  '));
+    setDetail(dUa, navigator.userAgent || 'unknown');
+  }
+
+  function toggleDetails(show) {
+    if (!detailsEl) return;
+    detailsEl.hidden = (show === undefined) ? !detailsEl.hidden : !show;
+    updateDetails();
+  }
+
   /* ── logging ──────────────────────────────────────────────────────────── */
+  /* Auto-scroll only follows the tail while the user is already there, so a
+     user scrolling back through the chain output is never yanked away. */
+  var autoScroll = true;
+
+  function atLogBottom() {
+    if (!logView) return true;
+    return (logView.scrollHeight - logView.scrollTop - logView.clientHeight) < 48;
+  }
+
+  function onLogScroll() {
+    var bottom = atLogBottom();
+    autoScroll = bottom;
+    if (jumpBtn) jumpBtn.hidden = bottom;
+  }
+
   function scrollLogToBottom() {
-    if (logView) logView.scrollTop = logView.scrollHeight;
+    if (!logView) return;
+    if (!autoScroll) return;
+    logView.scrollTop = logView.scrollHeight;
   }
 
   function uiLog(message, type, deferScroll) {
@@ -210,10 +362,20 @@
      "stopped at ..." marker in sessionStorage under shared "slopkit-poops:*"
      keys. On the PS5 browser the shortcut session can outlive a console
      reboot, so a previous interrupted run would otherwise block every retry.
-     Clear them right before arming so the full chain restarts from the top. */
+     Clear the WHOLE namespace (not a hard-coded key list) right before
+     arming so a future upstream key can never be left behind. */
   function clearSlopkitState() {
     try {
+      var doomed = [];
+      for (var i = 0; i < sessionStorage.length; i++) {
+        var k = sessionStorage.key(i);
+        if (k && k.indexOf('slopkit-poops:') === 0) doomed.push(k);
+      }
+      for (var j = 0; j < doomed.length; j++) sessionStorage.removeItem(doomed[j]);
+    } catch (e) { }
+    try {
       sessionStorage.removeItem('slopkit-poops:next');
+      sessionStorage.removeItem('slopkit-poops:last');
       sessionStorage.removeItem('slopkit-poops:latch');
     } catch (e) { }
   }
@@ -227,19 +389,30 @@
     return { str: m[1], num: parseFloat(m[1]) };
   }
 
+  function queryParam(name) {
+    try {
+      return new URLSearchParams(window.location.search).get(name);
+    } catch (e) {
+      try {
+        var m = new RegExp('[?&]' + name + '=([^&#]+)').exec(window.location.search);
+        return m ? decodeURIComponent(m[1]) : null;
+      } catch (e2) { }
+    }
+    return null;
+  }
+
   /* Choose which exploit to arm. Forced modes (build-time EXPLOIT_MODE or a
      ?force= query) bypass the firmware table so a specific chain can be
      exercised on any firmware — the exploit page's own firmware guard still
      applies. Returns 'umtx2' | 'poops' | 'relapse' | null. */
   function pickExploit() {
     var fw = detectFirmware();
+    fwDetected = fw;
     if (fwPill) fwPill.textContent = 'FW ' + (fw ? fw.str : 'unknown');
 
     var forced = null;
-    try {
-      var q = new URLSearchParams(window.location.search).get('force');
-      if (q === 'umtx2' || q === 'poops' || q === 'relapse') forced = q;
-    } catch (e) { }
+    var q = queryParam('force');
+    if (q === 'umtx2' || q === 'poops' || q === 'relapse') forced = q;
     if (forced) {
       uiLog('[force] using ' + forced + ' on firmware ' + (fw ? fw.str : 'unknown'), 'warning');
       return forced;
@@ -258,10 +431,15 @@
     var hasRelapse = isRelapseSupported(fw.num, fw.str);
 
     if (hasPoops && hasRelapse) {
-      var stored = null;
-      try {
-        stored = localStorage.getItem('piou_exploit');
-      } catch (e) { }
+      /* The installer passes the user's choice in the URL and mirrors it in
+         localStorage; ask the on-console server as a last resort. */
+      var stored = queryParam('exploit');
+      if (stored !== 'poops' && stored !== 'relapse') {
+        stored = null;
+        try {
+          stored = localStorage.getItem('piou_exploit');
+        } catch (e) { }
+      }
       if (!stored) {
         try {
           var xhr = new XMLHttpRequest();
@@ -272,8 +450,8 @@
           }
         } catch (e) { }
       }
-      if (stored === 'relapse') return 'relapse';
       if (stored === 'poops') return 'poops';
+      if (stored === 'relapse') return 'relapse';
       return 'relapse'; /* default to relapse on dual firmwares */
     }
 
@@ -303,7 +481,9 @@
       mirrorTimer = 0;
     }
     if (data.ok) {
-      uiLog('Payload loaded (' + data.bytes + ' bytes sent to elfldr).', 'success');
+      var bytes = (typeof data.bytes === 'number' && data.bytes > 0) ? data.bytes : null;
+      uiLog('Payload loaded' + (bytes ? ' (' + bytes + ' bytes sent to elfldr).' : '.'), 'success');
+      lastEvent = 'payload loaded' + (bytes ? ' (' + bytes + ' bytes)' : '');
       markDone();
       setTimeout(function () {
         uiLog('Payload running on the console. You can close this page.', 'success');
@@ -318,8 +498,10 @@
         try { exploitEl.src = 'about:blank'; } catch (e) { }
       }
     } else {
-      uiLog('[ERROR] Autoload failed: ' + (data.why || 'unknown error'), 'error');
-      markError('Autoload failed: ' + (data.why || 'unknown error'));
+      var why = data.why || 'unknown error';
+      uiLog('[ERROR] Autoload failed: ' + why, 'error');
+      lastEvent = 'autoload failed: ' + why;
+      markError('Autoload failed: ' + why);
     }
   }
 
@@ -335,11 +517,15 @@
 
   var lastLabel = '';
   function setProgressLabel(text) {
+    /* Once the run reached a terminal state, the label belongs to the verdict
+       (success text / error reason) — never overwrite it with late chain noise. */
+    if (finished) return;
     var label = text.replace(/^\[[*+\-]\]\s*/, '').replace(/\s+/g, ' ');
     if (label.length > 76) label = label.slice(0, 73) + '...';
     if (label && label !== lastLabel) {
       lastLabel = label;
       if (barLabel) barLabel.textContent = label;
+      lastEvent = label;
     }
   }
 
@@ -396,7 +582,8 @@
 
     var lines;
     try {
-      lines = frameDoc.querySelectorAll('#console > div');
+      var consoleEl = frameDoc.getElementById('console');
+      lines = consoleEl ? consoleEl.children : [];
     } catch (e) {
       return;
     }
@@ -409,7 +596,7 @@
       if (frameDoc.readyState === 'complete' && mirrorWarned !== frameUrl) {
         mirrorWarned = frameUrl;
         uiLog('[iframe] no exploit log at "' + (frameUrl || 'about:blank')
-          + '" — the chain may not have started. Use Retry if nothing happens.',
+          + '" — the chain may not have started. Use Restart if nothing happens.',
           'warning');
       }
       return;
@@ -421,6 +608,9 @@
       consoleMirror.lines = lines.length;
     }
     var mirroredAny = false;
+    /* Only the visible tail can survive our bounded log. Skip historical
+       bursts instead of creating thousands of immediately discarded nodes. */
+    consoleMirror.lines = Math.max(consoleMirror.lines, lines.length - MAX_LOG_LINES);
     for (; consoleMirror.lines < lines.length; consoleMirror.lines++) {
       var el = lines[consoleMirror.lines];
       var text = (el.textContent || '').trim();
@@ -429,6 +619,7 @@
       consoleMirror.lastEntry = uiLog('[' + prefix + '] ' + text, severity, true);
       consoleMirror.lastText = text;
       mirroredAny = true;
+      firstOutputSeen = true;
       touch();
       advanceStageFromText(text);
       if (severity === 'info' || severity === 'success') setProgressLabel(text);
@@ -443,6 +634,7 @@
       if (lastText && lastText !== consoleMirror.lastText) {
         consoleMirror.lastEntry.textContent = '[' + prefix + '] ' + lastText;
         consoleMirror.lastText = lastText;
+        firstOutputSeen = true;
         touch();
         advanceStageFromText(lastText);
         if (consoleSeverity(lastText, last.className || '') !== 'error') {
@@ -524,10 +716,12 @@
         uiLog('[poops] ' + line, 'info', true);
         advancePoopsProgress(line);
         mirroredAny = true;
+        firstOutputSeen = true;
         touch();
       } else if (/FAIL|ERROR|REFUSED|REBOOT|failed|panic|exception/i.test(line) || /^\[-\]/.test(line)) {
         uiLog('[poops] ' + line, 'error', true);
         mirroredAny = true;
+        firstOutputSeen = true;
         touch();
       }
     }
@@ -546,6 +740,7 @@
         uiLog('[stage] ' + slopkitLastStageText, 'info', true);
       }
       mirroredAny = true;
+      firstOutputSeen = true;
       touch();
     }
 
@@ -573,6 +768,7 @@
         if (eline) {
           uiLog('[early] ' + eline, /ERROR|FAIL/i.test(eline) ? 'error' : 'info', true);
           mirroredAny = true;
+          firstOutputSeen = true;
           touch();
         }
       }
@@ -583,23 +779,88 @@
 
   /* ── watchdog / timer ─────────────────────────────────────────────────── */
   function tick() {
+    /* A terminal state freezes the clock: the elapsed time shown is the time
+       the run actually took, not however long the tab has been open. */
+    if (finished) return;
     if (timerEl) timerEl.textContent = elapsedLabel();
-    if (!chainStarted || finished || stalled) return;
-    if (Date.now() - lastActivity < STALL_MS) return;
-    stalled = true;
-    setState('Stalled');
-    uiLog('[watchdog] No progress for ' + Math.round(STALL_MS / 1000) +
-      's. The chain may be stuck — use Retry to start a clean run.', 'warning');
-    showRetry();
+    if (detailsEl && !detailsEl.hidden) updateDetails();
+    if (!chainStarted || stalled) return;
+
+    var now = Date.now();
+
+    if (!firstOutputSeen && !firstOutputWarned && armedAt && (now - armedAt) > FIRST_OUTPUT_MS) {
+      firstOutputWarned = true;
+      uiLog('[watchdog] The chain has not logged anything after ' +
+        Math.round(FIRST_OUTPUT_MS / 1000) + 's. Some steps are naturally slow, ' +
+        'but if this never starts, use Restart.', 'warning');
+    }
+
+    var idle = now - lastActivity;
+    if (idle > STALL_MS) {
+      stalled = true;
+      setState('stall');
+      setProgressLabel('Stalled — no progress for ' + Math.round(STALL_MS / 1000) +
+        's. Use Retry to start a clean run.');
+      uiLog('[watchdog] No progress for ' + Math.round(STALL_MS / 1000) +
+        's. The chain looks stuck — use Retry to start a clean run.', 'warning');
+      showRetry();
+      return;
+    }
+
+    if (idle > HEARTBEAT_MS && (now - lastHeartbeatAt) > HEARTBEAT_MS) {
+      lastHeartbeatAt = now;
+      uiLog('[watchdog] still working — ' + Math.round(idle / 1000) +
+        's since the last log line…', 'dim');
+    }
   }
 
   /* ── retry ────────────────────────────────────────────────────────────── */
   function doRetry() {
     if (mirrorTimer) { clearInterval(mirrorTimer); mirrorTimer = 0; }
     if (tickTimer) { clearInterval(tickTimer); tickTimer = 0; }
+    if (restartBtn) restartBtn.disabled = true;
+    if (retryBtn) retryBtn.disabled = true;
     /* A clean run means a clean slopkit latch, or the chain no-ops. */
     clearSlopkitState();
-    try { window.location.reload(); } catch (e) { }
+    uiLog('Restarting…', 'accent');
+    try {
+      window.location.reload();
+    } catch (e) {
+      uiLog('[ERROR] Reload failed: ' + (e && e.message ? e.message : e) +
+        '. Close this page and open the app again.', 'error');
+      if (restartBtn) restartBtn.disabled = false;
+      if (retryBtn) retryBtn.disabled = false;
+      markError('Reload failed — close and reopen the app.');
+    }
+  }
+
+  /* ── error traps ──────────────────────────────────────────────────────── */
+  function installErrorHandlers() {
+    window.onerror = function (msg, src, line) {
+      try {
+        if (!finished) {
+          var text = String(msg === undefined ? 'unknown error' : msg);
+          uiLog('[fatal] ' + text + (line ? ' (line ' + line + ')' : ''), 'error');
+          lastEvent = 'script error: ' + text;
+          markError('Script error: ' + text);
+        }
+      } catch (e) { }
+      /* Swallow the default WebKit error console: the run is already over and
+         a native dialog on top of it only hides the retry button. */
+      return true;
+    };
+    if (window.addEventListener) {
+      window.addEventListener('unhandledrejection', function (ev) {
+        try {
+          if (finished) return;
+          var r = ev && ev.reason;
+          var text = (r && r.message) ? r.message : String(r);
+          uiLog('[fatal] unhandled rejection: ' + text, 'error');
+          lastEvent = 'unhandled rejection: ' + text;
+          markError('Unhandled error: ' + text);
+        } catch (e) { }
+      }, false);
+    }
   }
 
   /* ── boot ─────────────────────────────────────────────────────────────── */
@@ -607,7 +868,9 @@
     window.addEventListener('message', function (event) {
       var data = event.data;
       if (!data || data.type !== 'piou') return;
-      if (exploitEl && event.source !== exploitEl.contentWindow) return;
+      var src = null;
+      try { src = exploitEl ? exploitEl.contentWindow : null; } catch (e) { src = null; }
+      if (!src || event.source !== src || !chainStarted) return;
       if (data.kind === 'log' && exploitMode === 'relapse') {
         mirrorConsole(exploitMode);
         return;
@@ -618,20 +881,63 @@
     });
   }
 
+  function versionLabel() {
+    try {
+      var m = /v([0-9][^\s]*)/.exec(doc.title);
+      if (m) return ' ' + m[1];
+    } catch (e) { }
+    return '';
+  }
+
   function start() {
     if (retryBtn) retryBtn.onclick = doRetry;
+    if (restartBtn) restartBtn.onclick = doRetry;
+    if (jumpBtn) jumpBtn.onclick = function () {
+      autoScroll = true;
+      jumpBtn.hidden = true;
+      scrollLogToBottom();
+    };
+    if (detailsBtn) detailsBtn.onclick = function () { toggleDetails(); };
+    if (detailsClose) detailsClose.onclick = function () { toggleDetails(false); };
+    if (logView && logView.addEventListener) {
+      logView.addEventListener('scroll', onLogScroll, false);
+    }
+    doc.addEventListener('keydown', function (ev) {
+      if (!ev) return;
+      var k = ev.key || ev.keyCode;
+      if ((k === 'r' || k === 'R' || k === 82) && chainStarted && !ev.ctrlKey && !ev.metaKey) {
+        doRetry();
+      }
+    }, false);
 
-    uiLog('PiouAutoLoader ' + (doc.title.split('v')[1] || ''), 'accent');
+    /* A chain that navigates the iframe (or fails to) should still show up in
+       the timeline, so the log never looks frozen for no reason. */
+    if (exploitEl) {
+      exploitEl.onload = function () {
+        if (finished || !chainStarted) return;
+        var url = '';
+        try { url = exploitEl.contentWindow.location.href; } catch (e) { }
+        uiLog('[iframe] loaded ' + (url || 'about:blank'), 'dim');
+        touch();
+      };
+      exploitEl.onerror = function () {
+        if (finished || !chainStarted) return;
+        uiLog('[iframe] the chain page failed to load.', 'error');
+      };
+    }
+
+    renderStageTimes();
+    setState('boot');
+
+    uiLog('PiouAutoLoader' + versionLabel(), 'accent');
     uiLog('Detecting firmware…', 'dim');
     setProgress(0, 'Waiting to start…');
-    setState('Booting');
 
     attachMessageListener();
 
     var picked = pickExploit();
     if (!picked) {
-      setState('Unsupported');
-      markError('Unsupported firmware.');
+      markError('Unsupported firmware — nothing to run here.');
       return;
     }
 
@@ -665,8 +971,10 @@
     } catch (e) { }
 
     setStage(0);
-    setState('Running');
+    setState('run');
     chainStarted = true;
+    armedAt = Date.now();
+    lastHeartbeatAt = armedAt;
     uiLog('Arming chain…', 'dim');
 
     try {
@@ -676,6 +984,8 @@
       markError('Failed to arm the exploit iframe.');
     }
   }
+
+  installErrorHandlers();
 
   if (doc.readyState === 'loading') {
     doc.addEventListener('DOMContentLoaded', start);
