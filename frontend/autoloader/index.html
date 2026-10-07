@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <title>PiouAutoLoader v[[VERSION_PLACEHOLDER]]</title>
+</head>
+
+<body>
+  <!-- Animated backdrop: grid, glow and a slow scan sweep. -->
+  <div id="bg" aria-hidden="true">
+    <div id="grid"></div>
+    <div id="glow"></div>
+    <div id="scan"></div>
+  </div>
+
+  <!-- The exploit runs here. Kept display:none: its document still executes. -->
+  <iframe id="exploit" title="exploit"></iframe>
+
+  <main id="app">
+    <header id="brand">
+      <div id="orb" class="orb">
+        <span class="ring"></span>
+        <span class="ring r2"></span>
+        <span class="core"></span>
+      </div>
+      <div id="titles">
+        <h1>PiouAutoLoader</h1>
+        <p id="subtitle">Automated WebKit payload loader</p>
+      </div>
+      <div id="meta">
+        <span class="pill" id="fwPill">FW --</span>
+        <span class="pill" id="statePill">Booting</span>
+      </div>
+    </header>
+
+    <section id="track" aria-label="Progress stages">
+      <ol id="steps">
+        <li><i></i><span>Boot</span></li>
+        <li><i></i><span>WebKit</span></li>
+        <li><i></i><span>Kernel</span></li>
+        <li><i></i><span>elfldr</span></li>
+        <li><i></i><span>Payload</span></li>
+      </ol>
+    </section>
+
+    <section id="barWrap">
+      <div id="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="barFill"></div>
+        <div id="barShine"></div>
+      </div>
+      <div id="barLabel">Waiting to start…</div>
+    </section>
+
+    <section id="console">
+      <div id="consoleHead">
+        <span class="led"></span>
+        <span id="consoleTitle">Live log</span>
+        <span id="timer">00:00</span>
+      </div>
+      <div id="log" aria-live="polite"></div>
+      <div id="retryWrap" hidden>
+        <button id="retryBtn" type="button">Retry</button>
+      </div>
+    </section>
+
+    <footer id="foot">
+      <span>PiouAutoLoader v[[VERSION_PLACEHOLDER]]</span>
+      <span class="sep">&middot;</span>
+      <span>built [[BUILD_TIME_PLACEHOLDER]]</span>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
