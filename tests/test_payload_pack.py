@@ -5,6 +5,7 @@ import io
 import pathlib
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -30,6 +31,10 @@ class PayloadPackTests(unittest.TestCase):
         response.geturl = lambda: self.payload["url"]
         return response
 
+    def test_services_profile_contains_install_and_servers(self):
+        result = pack.select_payloads(self.catalog, self.catalog["profiles"]["services"])
+        self.assertEqual(result, ["websrv", "ftpsrv", "klogsrv", "shsrv", "pkg-install"])
+
     def test_dependencies_order_and_deduplication(self):
         result = pack.select_payloads(self.catalog, ["shadowmount", "kstuff-lite", "cheatrunner"])
         self.assertEqual(result, ["kstuff-lite", "shadowmount", "cheatrunner"])
@@ -46,6 +51,22 @@ class PayloadPackTests(unittest.TestCase):
         for keys in (["shadowmount"], ["unknown"]):
             with self.assertRaises(ValueError):
                 pack.select_payloads(self.catalog, keys)
+
+    def test_archive_payload_extracts_inner_elf(self):
+        archive_path = self.root / "source.zip"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("PKGInstall/pkg_install.elf", self.data)
+        data = archive_path.read_bytes()
+        payload = dict(self.payload, name="PKGInstall", filename="pkg_install.elf",
+                       archive_member="PKGInstall/pkg_install.elf",
+                       archive_sha256=hashlib.sha256(data).hexdigest(), archive_size=len(data),
+                       sha256=hashlib.sha256(self.data).hexdigest(), size=len(self.data),
+                       url="https://example.test/pkg.zip")
+        cache = self.root / "cache"
+        cache.mkdir()
+        (cache / (payload["archive_sha256"] + ".zip")).write_bytes(data)
+        result = pack.fetch(payload, cache)
+        self.assertEqual(result.read_bytes(), self.data)
 
     def test_cache_reuse_avoids_network(self):
         with patch.object(pack.urllib.request, "urlopen", return_value=self.response()) as request:

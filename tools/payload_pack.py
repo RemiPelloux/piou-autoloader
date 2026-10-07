@@ -10,6 +10,7 @@ import shutil
 import sys
 import tempfile
 import urllib.request
+import zipfile
 
 CATALOG = Path(__file__).resolve().parents[1] / "payloads" / "catalog.json"
 CHUNK_SIZE = 1024 * 1024
@@ -23,12 +24,19 @@ def load_catalog(path=CATALOG):
     for payload in catalog["payloads"].values():
         if not re.fullmatch(r"[A-Za-z0-9_.-]+\.elf", payload["filename"]):
             raise ValueError("Invalid payload filename")
+        if payload.get("archive_member") and not payload["archive_member"].endswith(".elf"):
+            raise ValueError("Archive member must be an ELF")
         if not payload["url"].startswith("https://"):
             raise ValueError("Payload URLs must use HTTPS")
         if not re.fullmatch(r"[a-f0-9]{64}", payload["sha256"]):
             raise ValueError("Invalid SHA-256 digest")
         if not 0 < payload["size"] <= 128 * CHUNK_SIZE:
             raise ValueError("Invalid payload size")
+        if payload.get("archive_member"):
+            if not re.fullmatch(r"[a-f0-9]{64}", payload.get("archive_sha256", "")):
+                raise ValueError("Invalid archive SHA-256 digest")
+            if not 0 < payload.get("archive_size", 0) <= 512 * CHUNK_SIZE:
+                raise ValueError("Invalid archive size")
     return catalog
 
 
@@ -82,10 +90,40 @@ def verified(path, payload):
 def fetch(payload, cache):
     cache.mkdir(parents=True, exist_ok=True)
     target = cache / (payload["sha256"] + ".elf")
+    if payload.get("archive_member"):
+        archive = cache / (payload["archive_sha256"] + ".zip")
+        if not verified_archive(archive, payload):
+            download(payload, archive)
+        with zipfile.ZipFile(archive) as source:
+            try:
+                data = source.read(payload["archive_member"])
+            except KeyError as error:
+                raise ValueError("Missing archive member: " + payload["archive_member"]) from error
+        if len(data) != payload["size"] or hashlib.sha256(data).hexdigest() != payload["sha256"]:
+            raise ValueError("Extracted checksum or size mismatch: " + payload["name"])
+        target.write_bytes(data)
+        return target
     if verified(target, payload):
         return target
+    download(payload, target)
+    return target
+
+
+def verified_archive(path, payload):
+    return path.is_file() and path.stat().st_size == payload["archive_size"] and digest_file(path) == payload["archive_sha256"]
+
+
+def digest_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(CHUNK_SIZE), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download(payload, target):
     request = urllib.request.Request(payload["url"], headers={"User-Agent": "PiouAutoLoader-pack"})
-    with tempfile.NamedTemporaryFile(dir=cache, delete=False) as file:
+    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as file:
         temporary = Path(file.name)
         try:
             with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
@@ -94,11 +132,15 @@ def fetch(payload, cache):
                 total = 0
                 while chunk := response.read(CHUNK_SIZE):
                     total += len(chunk)
-                    if total > payload["size"]:
+                    limit = payload.get("archive_size", payload["size"])
+                    if total > limit:
                         raise ValueError("Download exceeds pinned size")
                     file.write(chunk)
             file.close()
-            if not verified(temporary, payload):
+            if payload.get("archive_member"):
+                if not verified_archive(temporary, payload):
+                    raise ValueError("Archive checksum or size mismatch: " + payload["name"])
+            elif not verified(temporary, payload):
                 raise ValueError("Checksum or size mismatch: " + payload["name"])
             os.replace(temporary, target)
         finally:
@@ -176,8 +218,15 @@ def parser(catalog):
 
 def main(argv=None):
     try:
+        argv = list(sys.argv[1:] if argv is None else argv)
+        refresh = "--refresh-catalog" in argv
+        if refresh:
+            argv.remove("--refresh-catalog")
+            from update_catalog import refresh as refresh_catalog
+            refresh_catalog()
         catalog = load_catalog()
         cli = parser(catalog)
+        cli.add_argument("--refresh-catalog", action="store_true", help=argparse.SUPPRESS)
         options = cli.parse_args(argv)
         if options.list:
             for key, payload in catalog["payloads"].items():

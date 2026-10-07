@@ -1,61 +1,211 @@
 {
   "schema": 1,
   "profiles": {
-    "manager": ["payload-manager"],
-    "arsenal": ["elf-arsenal"],
-    "modular": ["shadowmount", "cheatrunner"],
-    "orbit": ["shadowmount", "orbit-store"],
-    "custom": []
+    "manager": [
+      "payload-manager"
+    ],
+    "arsenal": [
+      "elf-arsenal"
+    ],
+    "modular": [
+      "shadowmount",
+      "cheatrunner"
+    ],
+    "orbit": [
+      "shadowmount",
+      "orbit-store"
+    ],
+    "custom": [],
+    "services": [
+      "websrv",
+      "ftpsrv",
+      "klogsrv",
+      "shsrv",
+      "pkg-install"
+    ]
   },
   "payloads": {
     "payload-manager": {
-      "name": "Payload Manager", "version": "0.5.2", "filename": "pldmgr.elf",
+      "name": "Payload Manager",
+      "version": "0.5.2",
+      "asset": "pldmgr_v0.5.2.elf",
+      "filename": "pldmgr.elf",
       "source": "https://github.com/itsPLK/ps5-payload-manager",
       "url": "https://github.com/itsPLK/ps5-payload-manager/releases/download/v0.5.2/pldmgr_v0.5.2.elf",
       "sha256": "62b3ba2a4937c2afc502f9a4e7242cca538610ebb4ae2800c7c6f72e7f268e7c",
-      "size": 2410776, "delay_ms": 1000, "requires": [], "conflicts": [],
-      "note": "Manage payloads interactively. Its own autoload feature is separate from this pack."
+      "size": 2410776,
+      "delay_ms": 1000,
+      "requires": [],
+      "conflicts": [],
+      "note": "Manage payloads interactively. Its own autoload feature is separate from this pack.",
+      "release_url": "https://github.com/itsPLK/ps5-payload-manager/releases/tag/v0.5.2"
     },
     "elf-arsenal": {
-      "name": "ELF Arsenal", "version": "1.6.23", "filename": "elf-arsenal.elf",
+      "name": "ELF Arsenal",
+      "version": "1.6.23",
+      "asset": "elf-arsenal.elf",
+      "filename": "elf-arsenal.elf",
       "source": "https://git.etawen.dev/soniciso/elf-arsenal",
       "url": "https://git.etawen.dev/soniciso/elf-arsenal/releases/download/v1.6.23/elf-arsenal.elf",
       "sha256": "20cdb0979ce627aff8e684a4506e18390a72492d5e3aa15ecef0bfe1bca08bb5",
-      "size": 4937952, "delay_ms": 10000, "requires": [],
-      "conflicts": ["kstuff-lite", "shadowmount", "cheatrunner"],
-      "note": "Bundles kstuff-lite, ShadowMountPlus and CheatRunner. Configure its services at http://<PS5-IP>:6969. Check upstream firmware support and first-run defaults. Digest measured from the upstream release download."
+      "size": 4937952,
+      "delay_ms": 10000,
+      "requires": [],
+      "conflicts": [
+        "kstuff-lite",
+        "shadowmount",
+        "cheatrunner"
+      ],
+      "note": "Bundles kstuff-lite, ShadowMountPlus and CheatRunner. Configure its services at http://<PS5-IP>:6969. Check upstream firmware support and first-run defaults. Digest measured from the upstream release download.",
+      "release_url": "https://git.etawen.dev/soniciso/elf-arsenal/releases/tag/v1.6.23"
     },
     "kstuff-lite": {
-      "name": "kstuff-lite", "version": "1.11", "filename": "kstuff.elf",
+      "name": "kstuff-lite",
+      "version": "1.11",
+      "asset": "kstuff.elf",
+      "filename": "kstuff.elf",
       "source": "https://github.com/EchoStretch/kstuff-lite",
       "url": "https://github.com/EchoStretch/kstuff-lite/releases/download/v1.11/kstuff.elf",
       "sha256": "ab9a6cb4d3b1daf139d4d646e402b1cf569071acd64599c936d7a3a6164dc779",
-      "size": 1737080, "delay_ms": 5000, "requires": [], "conflicts": ["elf-arsenal"],
-      "note": "Upstream labels this release beta and advertises FW 1.00–13.60. Do not also run another HEN/kstuff stack."
+      "size": 1737080,
+      "delay_ms": 5000,
+      "requires": [],
+      "conflicts": [
+        "elf-arsenal"
+      ],
+      "note": "Upstream labels this release beta and advertises FW 1.00\u201313.60. Do not also run another HEN/kstuff stack.",
+      "release_url": "https://github.com/EchoStretch/kstuff-lite/releases/tag/v1.11"
     },
     "shadowmount": {
-      "name": "ShadowMountPlus", "version": "1.7beta3", "filename": "shadowmountplus.elf",
+      "name": "ShadowMountPlus",
+      "version": "1.7beta3",
+      "asset": "shadowmountplus.elf",
+      "filename": "shadowmountplus.elf",
       "source": "https://github.com/drakmor/ShadowMountPlus",
       "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta3/shadowmountplus.elf",
       "sha256": "2a7427e20ba7a70bd8cd01e47eb00ee7ca82db82dff3da7884f48f9c3fcbe95a",
-      "size": 2437848, "delay_ms": 5000, "requires": ["kstuff-lite"], "conflicts": ["elf-arsenal"],
-      "note": "ShadowMountPlus variant; upstream requires kstuff-lite 1.07+. Beta: review upstream storage and shutdown caveats."
+      "size": 2437848,
+      "delay_ms": 5000,
+      "requires": [
+        "kstuff-lite"
+      ],
+      "conflicts": [
+        "elf-arsenal"
+      ],
+      "note": "ShadowMountPlus variant; upstream requires kstuff-lite 1.07+. Beta: review upstream storage and shutdown caveats.",
+      "release_url": "https://github.com/drakmor/ShadowMountPlus/releases/tag/1.7beta3"
     },
     "cheatrunner": {
-      "name": "CheatRunner", "version": "0.17.2", "filename": "CheatRunner.elf",
+      "name": "CheatRunner",
+      "version": "0.17.2",
+      "asset": "CheatRunner.elf",
+      "filename": "CheatRunner.elf",
       "source": "https://github.com/notmaj0r/CheatRunner",
       "url": "https://github.com/notmaj0r/CheatRunner/releases/download/v0.17.2/CheatRunner.elf",
       "sha256": "36ad03e236e6603aaaf05d95ed3399c7b54475a9bceba085cbe02899bc88ae0f",
-      "size": 10091832, "delay_ms": 2000, "requires": [], "conflicts": ["elf-arsenal"],
-      "note": "Local dashboard at http://<PS5-IP>:9999. Leave other cheat engines off; follow upstream upgrade instructions."
+      "size": 10091832,
+      "delay_ms": 2000,
+      "requires": [],
+      "conflicts": [
+        "elf-arsenal"
+      ],
+      "note": "Local dashboard at http://<PS5-IP>:9999. Leave other cheat engines off; follow upstream upgrade instructions.",
+      "release_url": "https://github.com/notmaj0r/CheatRunner/releases/tag/v0.17.2"
+    },
+    "pkg-install": {
+      "name": "PKGInstall",
+      "version": "0.34",
+      "asset": "PKGInstall.zip",
+      "filename": "pkg_install.elf",
+      "source": "https://github.com/ps5-payload-dev/websrv",
+      "url": "https://github.com/ps5-payload-dev/websrv/releases/download/v0.34/PKGInstall.zip",
+      "archive_sha256": "b8c8a03ea1379957b3038c8d3d09acd1395ae8e1161837f369597993552d528a",
+      "archive_size": 93250,
+      "archive_member": "PKGInstall/pkg_install.elf",
+      "sha256": "f723641e32a3ada5c0033748072d373012f0003c401629dd05e3702036528569",
+      "size": 110440,
+      "delay_ms": 1000,
+      "requires": [],
+      "conflicts": [],
+      "note": "Install a package from a URL. Invoke it with a package URL through your payload manager; it is not a package catalogue or piracy tool.",
+      "release_url": "https://github.com/ps5-payload-dev/websrv/releases/tag/v0.34"
+    },
+    "websrv": {
+      "name": "websrv",
+      "version": "0.34",
+      "asset": "websrv-ps5.elf",
+      "filename": "websrv.elf",
+      "source": "https://github.com/ps5-payload-dev/websrv",
+      "url": "https://github.com/ps5-payload-dev/websrv/releases/download/v0.34/websrv-ps5.elf",
+      "sha256": "54730c867c6e1148536fdcb370e63a7762d989ea87b62488ad4caff64d43f263",
+      "size": 1597864,
+      "delay_ms": 2000,
+      "requires": [],
+      "conflicts": [
+        "elf-arsenal"
+      ],
+      "note": "Web server and homebrew service; upstream release also contains PKGInstall and homebrew app bundles.",
+      "release_url": "https://github.com/ps5-payload-dev/websrv/releases/tag/v0.34"
+    },
+    "ftpsrv": {
+      "name": "ftpsrv",
+      "version": "0.21.1",
+      "asset": "ftpsrv-ps5.elf",
+      "filename": "ftpsrv.elf",
+      "source": "https://github.com/ps5-payload-dev/ftpsrv",
+      "url": "https://github.com/ps5-payload-dev/ftpsrv/releases/download/v0.21.1/ftpsrv-ps5.elf",
+      "sha256": "7d4b31c83eae4e056580482a3a074e1db25922efc74ac1e439473b45d71a5938",
+      "size": 191864,
+      "delay_ms": 1000,
+      "requires": [],
+      "conflicts": [],
+      "note": "FTP service for transferring files. Prefer a trusted local network and stop it when unused.",
+      "release_url": "https://github.com/ps5-payload-dev/ftpsrv/releases/tag/v0.21.1"
+    },
+    "klogsrv": {
+      "name": "klogsrv",
+      "version": "0.9",
+      "asset": "klogsrv-ps5.elf",
+      "filename": "klogsrv.elf",
+      "source": "https://github.com/ps5-payload-dev/klogsrv",
+      "url": "https://github.com/ps5-payload-dev/klogsrv/releases/download/v0.9/klogsrv-ps5.elf",
+      "sha256": "e828ec144231f81547cb58bc7d2c396fa984be0c2295f31364b58017816dcceb",
+      "size": 136016,
+      "delay_ms": 1000,
+      "requires": [],
+      "conflicts": [],
+      "note": "Kernel log forwarding service; expose logs only on a trusted local network.",
+      "release_url": "https://github.com/ps5-payload-dev/klogsrv/releases/tag/v0.9"
+    },
+    "shsrv": {
+      "name": "shsrv",
+      "version": "0.20",
+      "asset": "shsrv-ps5.elf",
+      "filename": "shsrv.elf",
+      "source": "https://github.com/ps5-payload-dev/shsrv",
+      "url": "https://github.com/ps5-payload-dev/shsrv/releases/download/v0.20/shsrv-ps5.elf",
+      "sha256": "fa4ccb2587bb61be317df0d001f668b17ebf9b4aafad87acf691b1fb8da0bd2d",
+      "size": 986184,
+      "delay_ms": 1000,
+      "requires": [],
+      "conflicts": [],
+      "note": "Shell service; use only on a trusted network and follow upstream documentation.",
+      "release_url": "https://github.com/ps5-payload-dev/shsrv/releases/tag/v0.20"
     },
     "orbit-store": {
-      "name": "Orbit Store", "version": "0.8.0", "filename": "orbit_store.elf",
+      "name": "Orbit Store",
+      "version": "0.8.0",
+      "asset": "orbit_store.elf",
+      "filename": "orbit_store.elf",
       "source": "https://github.com/saawant12/orbit-store-ps5",
       "url": "https://github.com/saawant12/orbit-store-ps5/releases/download/v0.8.0/orbit_store.elf",
       "sha256": "f8188366e1b6a36cf7ce1c3429df15a1d0fa69c2a93cb9cca36ea5a46cedbb4d",
-      "size": 46274256, "delay_ms": 2000, "requires": [], "conflicts": [],
-      "note": "Optional browser service at http://<PS5-IP>:34177. Sources remain user-configured. Library actions require ShadowMount's compatible API; the native TV app is installed separately upstream."
+      "size": 46274256,
+      "delay_ms": 2000,
+      "requires": [],
+      "conflicts": [],
+      "note": "Optional browser service at http://<PS5-IP>:34177. Sources remain user-configured. Library actions require ShadowMount's compatible API; the native TV app is installed separately upstream.",
+      "release_url": "https://github.com/saawant12/orbit-store-ps5/releases/tag/v0.8.0"
     }
   }
 }

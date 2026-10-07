@@ -13,6 +13,7 @@ Download and extract `piou-autoloader-payload-tools_v0.5.4.zip` from Releases, o
 | `modular` | kstuff-lite → ShadowMountPlus → CheatRunner | Configure services individually |
 | `orbit` | kstuff-lite → ShadowMountPlus → Orbit Store | Orbit browser service and its library dependency |
 | `custom` | Your `--add` selections plus required dependencies | A smaller custom setup |
+| `services` | websrv, ftpsrv, klogsrv, shsrv, PKGInstall | A local service bundle; review each service before enabling |
 
 ELF Arsenal already bundles kstuff-lite, ShadowMountPlus and CheatRunner. The builder rejects combinations that duplicate those services. Orbit can be added to Arsenal separately. Avoid running another HEN/kstuff stack alongside these presets.
 
@@ -21,14 +22,21 @@ ELF Arsenal already bundles kstuff-lite, ShadowMountPlus and CheatRunner. The bu
 ```bash
 python3 tools/payload_pack.py --list
 python3 tools/payload_pack.py --profile modular --firmware 9.00 --plan
+# Show current upstream release tags without changing files.
+python3 tools/update_catalog.py --check
 ```
 
 The firmware argument checks PiouAutoLoader's supported routing ranges. It is **not certification that every selected payload works on that firmware**. The plan prints upstream notes, including beta status. Read each project's release notes for your firmware.
 
 ## Download without automatic startup
 
+The catalog stores the last verified asset metadata as a reproducibility record. `--refresh-catalog` queries upstream latest releases and updates it before planning/building; it never changes an existing output folder. The updater requires the expected asset names and verifies downloaded assets, including extracting and hashing `PKGInstall` from the upstream ZIP. If an upstream renames an asset or publishes an incompatible latest build, refresh stops without replacing the catalog.
+
 ```bash
 python3 tools/payload_pack.py --profile arsenal --firmware 9.00
+
+# Refresh every catalog entry from each project's latest release, then build.
+python3 tools/payload_pack.py --refresh-catalog --profile services --firmware 9.00 --plan
 ```
 
 This creates `payload-pack/ps5_autoloader/` with verified ELF files, a `pack.json` provenance manifest, instructions, and an **inactive** `autoload.example.txt`. Rename the example to `autoload.txt` only when you want automatic startup.
@@ -59,8 +67,13 @@ Dependencies load before their consumers. Default waits are 5 seconds after kstu
 | [CheatRunner](https://github.com/notmaj0r/CheatRunner) | 0.17.2 | `http://<PS5-IP>:9999`; do not enable competing cheat engines |
 | [kstuff-lite](https://github.com/EchoStretch/kstuff-lite) | 1.11 beta | Upstream advertises FW 1.00–13.60; features vary by firmware |
 | [Payload Manager](https://github.com/itsPLK/ps5-payload-manager) | 0.5.2 | Interactive management and its separate autoload configuration |
+| [websrv](https://github.com/ps5-payload-dev/websrv) | 0.34 | Web/homebrew service; also publishes PKGInstall.zip |
+| [PKGInstall](https://github.com/ps5-payload-dev/websrv) | 0.34 | Extracted from the signed upstream ZIP; accepts a package URL as its argument |
+| [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv) | 0.21.1 | FTP file-transfer service |
+| [klogsrv](https://github.com/ps5-payload-dev/klogsrv) | 0.9 | Kernel-log forwarding service |
+| [shsrv](https://github.com/ps5-payload-dev/shsrv) | 0.20 | Shell service; use only on a trusted LAN |
 
-Orbit's native TV app is a separate upstream installation; this tool prepares its browser-service ELF only. Orbit's source choices remain off until configured in Orbit. ShadowMountPlus documents potential shutdown/data-corruption issues on some firmware; read its upstream notes before enabling it. No firmware or service settings are silently changed by the pack builder.
+Orbit's native TV app is a separate upstream installation; this tool prepares its browser-service ELF only. `PKGInstall` is a small URL-based installer payload, not a package catalogue: it does not find packages, bypass signatures, or grant package authorization. Use it only with packages you own or are authorized to install. `websrv`, FTP, klog, and shell services expose network interfaces; keep them on a trusted LAN and stop them when not needed. Orbit's source choices remain off until configured in Orbit. ShadowMountPlus documents potential shutdown/data-corruption issues on some firmware; read its upstream notes before enabling it. No firmware or service settings are silently changed by the pack builder.
 
 ## Integrity and performance
 

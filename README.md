@@ -57,6 +57,9 @@ python3 tools/payload_pack.py --profile modular --firmware 9.00 --plan
 
 # Prepare Arsenal + Orbit with automatic startup explicitly enabled.
 python3 tools/payload_pack.py --profile arsenal --add orbit-store --firmware 9.00 --autoload
+
+# Refresh every source to its latest upstream release before planning.
+python3 tools/payload_pack.py --refresh-catalog --profile services --firmware 9.00 --plan
 ```
 
 Copy the generated `payload-pack/ps5_autoloader/` folder to your USB root or `/data/ps5_autoloader`. Existing output folders are preserved. ELF Arsenal already bundles kstuff-lite, ShadowMountPlus, and CheatRunner; the builder blocks duplicate combinations.
